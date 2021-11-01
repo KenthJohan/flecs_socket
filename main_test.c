@@ -3,17 +3,14 @@
 
 void test_server()
 {
-	ecs_fd_t s = ecs_fd_listen(NULL, 9000);
-	printf("server %i\n", s);
+	ecs_fd_t s = ecs_fd_bind("tcp://localhost:9000");
+	ecs_fd_listen(s);
+	printf("Server fd: %i\n", s);
 
 	ecs_sockaddr_t addr;
 	ecs_fd_t c;
 	c = ecs_fd_accept(s, &addr);
-	printf("client %i\n", c);
-	c = ecs_fd_accept(s, &addr);
-	printf("client %i\n", c);
-	c = ecs_fd_accept(s, &addr);
-	printf("client %i\n", c);
+	printf("Client fd: %i\n", c);
 }
 
 
