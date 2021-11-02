@@ -95,6 +95,8 @@ ecs_fd_t ecs_socket_bind(const char *url, int flags)
 		.sin_family = AF_INET,
 		.sin_port = htons(port),
 	};
+	//sain.sin_addr.s_addr = inet_addr(addr);
+	sain.sin_addr.s_addr = htonl(INADDR_ANY);
 	if (strcmp(proto, "tcp") == 0)
 	{
 		int rv;
@@ -106,7 +108,7 @@ ecs_fd_t ecs_socket_bind(const char *url, int flags)
 	else if (strcmp(proto, "udp") == 0)
 	{
 		int rv;
-		server.fd = socket(AF_INET, SOCK_DGRAM, 0);
+		server.fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 		if (server.fd < 0){ECS_FD_PRINTERROR();goto error;}
 		rv = bind(server.fd, (struct sockaddr*)&sain, sizeof(struct sockaddr_in));
 		if (rv){ECS_FD_PRINTERROR();goto error;}
@@ -116,6 +118,14 @@ ecs_fd_t ecs_socket_bind(const char *url, int flags)
 		printf("Protocol not found\n");
 		exit(1);
 	}
+
+	u_long nMode = 0; // 0: BLOCKING
+	if (ioctlsocket (server.fd, FIONBIO, &nMode) == SOCKET_ERROR)
+	{
+		ECS_FD_PRINTERROR();
+		goto error;
+	}
+
 	return server;
 error:
 	exit(1);
@@ -201,19 +211,33 @@ void ecs_sockaddr_to_string(ecs_sockaddr_t *addr, char *str, int length)
 	}
 }
 
-
-
-
-
-int ecs_fd_read(ecs_fd_t fd, char *data, int size)
+// write() socket does not work on windows
+int ecs_fd_readfrom(ecs_fd_t fd, char *data, int size)
 {
-	int rv = recv(fd.fd, data, size, 0);
-	printf("read(%i):%i\n", fd, rv);
-	//int rv = read(fd.fd, data, size);
+	ecs_sockaddr_t addr;
+	int addrlen = sizeof(struct sockaddr);
+	int rv = recvfrom(fd.fd, data, size, 0, (struct sockaddr*)addr.bytes, &addrlen);
 	if (rv < 0)
 	{
 		ECS_FD_PRINTERROR();
-		perror("read");
+		perror("recvfrom");
+		//ECS_FD_PRINTERROR();
+		exit(1);
+	}
+	printf("recvfrom(%i):%i\n", fd, rv);
+}
+
+
+// read() socket does not work on windows
+int ecs_fd_read(ecs_fd_t fd, char *data, int size)
+{
+	int rv = recv(fd.fd, data, size, 0);
+	//printf("read(%i):%i\n", fd, rv);
+	//int rv = read(fd.fd, data, size);
+	if (rv < 0)
+	{
+		//ECS_FD_PRINTERROR();
+		//perror("read");
 		//ECS_FD_PRINTERROR();
 		//exit(1);
 	}
@@ -224,11 +248,11 @@ int ecs_fd_read(ecs_fd_t fd, char *data, int size)
 int ecs_fd_write(ecs_fd_t fd, char *data, int size)
 {
 	int rv = send(fd.fd, data, size, 0);
-	printf("write(%i):%i\n", fd, rv);
+	//printf("write(%i):%i\n", fd, rv);
 	//int rv = write(fd.fd, data, size);
 	if (rv < 0)
 	{
-		perror("write");
+		//perror("write");
 		//ECS_FD_PRINTERROR();
 		//exit(1);
 	}

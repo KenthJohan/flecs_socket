@@ -5,12 +5,13 @@
 void test_server()
 {
 	//ecs_fd_t fd_file = ecs_fd_path("/c/hello/hello.txt", O_CREAT);
-	ecs_fd_t fd_file = ecs_fd_path("/C/Users/Johan/Documents/flecs_socket/hello.txt", O_CREAT);
+	//ecs_fd_t fd_file = ecs_fd_path("/C/Users/Johan/Documents/flecs_socket/hello.txt", O_CREAT);
 	ecs_fd_t fd_tcpsock = ecs_fd_path("tcp://localhost:9000", 0);
-	ecs_fd_t fd_udpsock = ecs_fd_path("udp://localhost:9000", 0);
-	ecs_socket_connect(fd_udpsock, "udp://localhost:9001"); //read and write in udp://localhost:9001
+	ecs_fd_t fd_udpsock = ecs_fd_path("udp://127.0.0.1:9000", 0);
+	ecs_socket_connect(fd_udpsock, "udp://127.0.0.1:9001"); //read and write in udp://localhost:9001
 	ecs_socket_listen(fd_tcpsock);
-	printf("Server fd: %i\n", fd_tcpsock);
+	printf("fd_tcpsock: %i\n", fd_tcpsock);
+	printf("fd_udpsock: %i\n", fd_tcpsock);
 
 	while(1)
 	{

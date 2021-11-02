@@ -18,6 +18,8 @@ void ecs_fd_init();
 ecs_fd_t ecs_fd_path(const char *url, int flags);
 int ecs_fd_read(ecs_fd_t fd, char *data, int size);
 int ecs_fd_write(ecs_fd_t fd, char *data, int size);
+int ecs_fd_readfrom(ecs_fd_t fd, char *data, int size);
+
 
 ecs_fd_t ecs_socket_accept(ecs_fd_t s, ecs_sockaddr_t *addr);
 void ecs_socket_connect(ecs_fd_t client, const char *url);
