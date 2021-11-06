@@ -101,6 +101,7 @@ ecs_fd_t ecs_socket_bind(const char *url, int flags)
 	{
 		int rv;
 		server.fd = socket(AF_INET, SOCK_STREAM, 0);
+		SOCKET_ERROR;
 		if (server.fd < 0){ECS_FD_PRINTERROR();goto error;}
 		rv = bind(server.fd, (struct sockaddr*)&sain, sizeof(struct sockaddr_in));
 		if (rv){ECS_FD_PRINTERROR();goto error;}
@@ -120,7 +121,7 @@ ecs_fd_t ecs_socket_bind(const char *url, int flags)
 	}
 
 	u_long nMode = 0; // 0: BLOCKING
-	if (ioctlsocket (server.fd, FIONBIO, &nMode) == SOCKET_ERROR)
+	if (ioctlsocket(server.fd, FIONBIO, &nMode) == SOCKET_ERROR)
 	{
 		ECS_FD_PRINTERROR();
 		goto error;
