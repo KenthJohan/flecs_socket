@@ -26,6 +26,7 @@
 #include <string.h>
 #include <time.h>
 #include <flecs.h>
+#include "ecs_ws.h"
 
 /* clang-format off */
 #ifndef _WIN32
@@ -49,6 +50,14 @@ typedef int socklen_t;
 
 #include <ws.h>
 #include <utf8.h>
+
+
+
+ECS_COMPONENT_DECLARE(ecs_ws_t);
+
+
+
+
 
 /**
  * @dir src/
@@ -83,11 +92,11 @@ struct ws_port
  * This defines a set of data that is used inside of each
  * accept routine, whether by the main routine or not.
  */
-struct ws_accept
+typedef struct ws_clientx
 {
 	int sock;       /**< Socket number.               */
 	int port_index; /**< Port index in the port list. */
-};
+} ws_clientx;
 
 /**
  * @brief Ports list.
@@ -1369,6 +1378,64 @@ closed:
 	return (vsock);
 }
 
+
+
+
+static void ws_acceptor(int sock, int port_index)
+{
+	struct sockaddr_in client;     /* Client.                */
+	pthread_t client_thread;       /* Client thread.         */
+	int connection_index;          /* Free connection slot.  */
+	int new_sock;                  /* New opened connection. */
+	int len;                       /* Length of sockaddr.    */
+	int i;                         /* Loop index.            */
+
+	connection_index = 0;
+	len              = sizeof(struct sockaddr_in);
+
+	new_sock = accept(sock, (struct sockaddr *)&client, (socklen_t *)&len);
+
+	if (new_sock < 0)
+		panic("Error on accepting connections..");
+
+	/* Adds client socket to socks list. */
+	pthread_mutex_lock(&mutex);
+	for (i = 0; i < MAX_CLIENTS; i++)
+	{
+		if (client_socks[i].client_sock == -1)
+		{
+			client_socks[i].client_sock = new_sock;
+			client_socks[i].port_index  = port_index;
+			client_socks[i].state       = WS_STATE_CONNECTING;
+			client_socks[i].close_thrd  = false;
+			connection_index            = i;
+
+			if (pthread_mutex_init(&client_socks[i].mtx_state, NULL))
+				panic("Error on allocating close mutex");
+			if (pthread_cond_init(&client_socks[i].cnd_state_close, NULL))
+				panic("Error on allocating condition var\n");
+			break;
+		}
+	}
+	pthread_mutex_unlock(&mutex);
+
+	/* Client socket added to socks list ? */
+	if (i != MAX_CLIENTS)
+	{
+		if (pthread_create(&client_thread, NULL, ws_establishconnection,
+		(void *)(intptr_t)connection_index))
+			panic("Could not create the client thread!");
+
+		pthread_detach(client_thread);
+	}
+	else
+		close_socket(new_sock);
+}
+
+
+
+
+
 /**
  * @brief Main loop that keeps accepting new connections.
  *
@@ -1383,59 +1450,10 @@ closed:
  */
 static void *ws_accept(void *data)
 {
-	struct ws_accept *accept_data; /* Accept thread data.    */
-	struct sockaddr_in client;     /* Client.                */
-	pthread_t client_thread;       /* Client thread.         */
-	int connection_index;          /* Free connection slot.  */
-	int new_sock;                  /* New opened connection. */
-	int len;                       /* Length of sockaddr.    */
-	int i;                         /* Loop index.            */
-
-	connection_index = 0;
-	accept_data      = data;
-	len              = sizeof(struct sockaddr_in);
-
+	ws_clientx * d = data;
 	while (1)
 	{
-		/* Accept. */
-		new_sock =
-			accept(accept_data->sock, (struct sockaddr *)&client, (socklen_t *)&len);
-
-		if (new_sock < 0)
-			panic("Error on accepting connections..");
-
-		/* Adds client socket to socks list. */
-		pthread_mutex_lock(&mutex);
-		for (i = 0; i < MAX_CLIENTS; i++)
-		{
-			if (client_socks[i].client_sock == -1)
-			{
-				client_socks[i].client_sock = new_sock;
-				client_socks[i].port_index  = accept_data->port_index;
-				client_socks[i].state       = WS_STATE_CONNECTING;
-				client_socks[i].close_thrd  = false;
-				connection_index            = i;
-
-				if (pthread_mutex_init(&client_socks[i].mtx_state, NULL))
-					panic("Error on allocating close mutex");
-				if (pthread_cond_init(&client_socks[i].cnd_state_close, NULL))
-					panic("Error on allocating condition var\n");
-				break;
-			}
-		}
-		pthread_mutex_unlock(&mutex);
-
-		/* Client socket added to socks list ? */
-		if (i != MAX_CLIENTS)
-		{
-			if (pthread_create(&client_thread, NULL, ws_establishconnection,
-					(void *)(intptr_t)connection_index))
-				panic("Could not create the client thread!");
-
-			pthread_detach(client_thread);
-		}
-		else
-			close_socket(new_sock);
+		ws_acceptor(d->sock, d->port_index);
 	}
 	free(data);
 	return (data);
@@ -1459,9 +1477,9 @@ static void *ws_accept(void *data)
  * value. Each call _should_ have a different port and can have
  * different events configured.
  */
-int ws_socket(struct ws_events *evs, uint16_t port, int thread_loop)
+int ws_socket(struct ws_events *evs, uint16_t port, int thread_loop, ecs_world_t *world)
 {
-	struct ws_accept *accept_data; /* Accept thread data.    */
+	struct ws_clientx *accept_data; /* Accept thread data.    */
 	struct sockaddr_in server;     /* Server.                */
 	pthread_t accept_thread;       /* Accept thread.         */
 	int reuse;                     /* Socket option.         */
@@ -1536,7 +1554,12 @@ int ws_socket(struct ws_events *evs, uint16_t port, int thread_loop)
 	printf("Waiting for incoming connections...\n");
 	memset(client_socks, -1, sizeof(client_socks));
 
+
+	//ecs_entity_t e = ecs_new(world, ecs_ws_t);
+	//ecs_set(world, e, ecs_ws_t, {accept_data->sock, accept_data->port_index});
+
 	/* Accept connections. */
+
 	if (!thread_loop)
 		ws_accept(accept_data);
 	else
@@ -1546,8 +1569,60 @@ int ws_socket(struct ws_events *evs, uint16_t port, int thread_loop)
 		pthread_detach(accept_thread);
 	}
 
+
 	return (0);
 }
+
+
+
+
+
+
+
+void system_ws_acceptor(ecs_iter_t *it)
+{
+	const ecs_ws_t *p = ecs_term(it, const ecs_ws_t, 1);
+	for (int i = 0; i < it->count; i ++)
+	{
+		ws_acceptor(p->sock, p->port_index);
+	}
+}
+
+
+void system_ws_acceptor1(ecs_iter_t *it)
+{
+	const ecs_ws_t *p = ecs_term(it, const ecs_ws_t, 1);
+	for (int i = 0; i < it->count; i ++)
+	{
+		printf("%i, %i\n", p->sock, p->port_index);
+	}
+}
+
+
+void ws_flecs_init(ecs_world_t *world)
+{
+	 ECS_COMPONENT_DEFINE(world, ecs_ws_t);
+	 ECS_SYSTEM(world, system_ws_acceptor, EcsOnUpdate, [in] ecs_ws_t);
+	 ECS_SYSTEM(world, system_ws_acceptor1, EcsOnUpdate, [in] ecs_ws_t);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #ifdef AFL_FUZZ
 /**
@@ -1598,3 +1673,7 @@ int ws_file(struct ws_events *evs, const char *file)
 	return (0);
 }
 #endif
+
+
+
+

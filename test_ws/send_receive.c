@@ -20,102 +20,55 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <ws.h>
+#include <flecs.h>
+#include "ecs_ws.h"
 
-/**
- * @dir example/
- * @brief wsServer examples folder
- *
- * @file send_receive.c
- * @brief Simple send/receiver example.
- */
 
-/**
- * @brief Called when a client connects to the server.
- *
- * @param fd File Descriptor belonging to the client. The @p fd parameter
- * is used in order to send messages and retrieve informations
- * about the client.
- */
 void onopen(int fd)
 {
 	char *cli;
 	cli = ws_getaddress(fd);
-#ifndef DISABLE_VERBOSE
 	printf("Connection opened, client: %d | addr: %s\n", fd, cli);
-#endif
 	free(cli);
 }
 
-/**
- * @brief Called when a client disconnects to the server.
- *
- * @param fd File Descriptor belonging to the client. The @p fd parameter
- * is used in order to send messages and retrieve informations
- * about the client.
- */
+
 void onclose(int fd)
 {
 	char *cli;
 	cli = ws_getaddress(fd);
-#ifndef DISABLE_VERBOSE
 	printf("Connection closed, client: %d | addr: %s\n", fd, cli);
-#endif
 	free(cli);
 }
 
-/**
- * @brief Called when a client connects to the server.
- *
- * @param fd File Descriptor belonging to the client. The
- * @p fd parameter is used in order to send messages and
- * retrieve informations about the client.
- *
- * @param msg Received message, this message can be a text
- * or binary message.
- *
- * @param size Message size (in bytes).
- *
- * @param type Message type.
- */
+
 void onmessage(int fd, const unsigned char *msg, uint64_t size, int type)
 {
 	char *cli;
 	cli = ws_getaddress(fd);
-#ifndef DISABLE_VERBOSE
-	printf("I receive a message: %s (size: %" PRId64 ", type: %d), from: %s/%d\n",
-		msg, size, type, cli, fd);
-#endif
+	printf("I receive a message: %s (size: %" PRId64 ", type: %d), from: %s/%d\n",msg, size, type, cli, fd);
 	free(cli);
-
-	/**
-	 * Mimicks the same frame type received and re-send it again
-	 *
-	 * Please note that we could just use a ws_sendframe_txt()
-	 * or ws_sendframe_bin() here, but we're just being safe
-	 * and re-sending the very same frame type and content
-	 * again.
-	 */
 	ws_sendframe(fd, (char *)msg, size, 1, type);
 }
 
-/**
- * @brief Main routine.
- *
- * @note After invoking @ref ws_socket, this routine never returns,
- * unless if invoked from a different thread.
- */
-int main(void)
+
+int main(int argc, char * argv[])
 {
+	ecs_world_t *world = ecs_init_w_args(argc, argv);
+	ws_flecs_init(world);
+	ecs_set_threads(world, 4);
+
 	struct ws_events evs;
 	evs.onopen    = &onopen;
 	evs.onclose   = &onclose;
 	evs.onmessage = &onmessage;
-	ws_socket(&evs, 8080, 0); /* Never returns. */
+	ws_socket(&evs, 8080, 1, world);
 
-	/*
-	 * If you want to execute code past ws_socket, invoke it like:
-	 *   ws_socket(&evs, 8080, 1)
-	 */
+	while(1)
+	{
+		ecs_progress(world, 0.0f);
+		ecs_os_sleep(1, 0);
+	}
 
 	return (0);
 }
