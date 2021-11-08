@@ -96,10 +96,17 @@ static void eg_trace_address(int sock)
 	ecs_trace("%s:%i", addrstr, ntohs(addr.sin_port));
 }
 
+static void eg_trace_typestr(ecs_world_t *world, ecs_entity_t e)
+{
+	char *type_str = ecs_type_str(world, ecs_get_type(world, e));
+	const char *name = ecs_get_name(world, e);
+	ecs_trace("%s: [%s]\n", name, type_str);
+	ecs_os_free(type_str);
+}
 
 
 
-static void EgSocketTCP_OnAdd(ecs_iter_t *it)
+static void sys_EgSocketTCP(ecs_iter_t *it)
 {
 	EgSocketTCP *s = ecs_term(it, EgSocketTCP, 1);
 	EgSocketPort *p = ecs_term(it, EgSocketPort, 2);
@@ -137,8 +144,22 @@ struct eg_acceptor_params
 {
 	ecs_world_t *world;
 	ecs_entity_t entity;
+	ecs_entity_t prefab;
 	int sock;
 };
+
+//How to copy all components and values from one entity and paste them into another entity?
+static void eg_add_prefab(ecs_world_t *world, ecs_entity_t e, ecs_entity_t prefab)
+{
+	ecs_type_t t = ecs_get_type(world, prefab);
+	ecs_entity_t *ids = ecs_vector_first(t, ecs_entity_t);
+	for (int32_t i = 0; i < ecs_vector_count(t); ++i)
+	{
+		//void const * a = ecs_get_id(world, prefab, ids[i]);
+		//ecs_add_id(world, e, ids[i]);
+		//ecs_set_id(world, e, ids[i], 1, a);
+	}
+}
 
 static void * eg_acceptor(void * data)
 {
@@ -146,7 +167,8 @@ static void * eg_acceptor(void * data)
 	int sock = d->sock;
 	ecs_world_t *world = d->world;
 	ecs_entity_t entity = d->entity;
-	free(data);
+	ecs_entity_t prefab = d->prefab;
+	//free(data);
 	struct sockaddr_in client;
 	int len = sizeof(struct sockaddr_in);
 	while (1)
@@ -160,24 +182,42 @@ static void * eg_acceptor(void * data)
 		}
 		eg_trace_address(sock1);
 		ecs_entity_t e = ecs_new_entity(world, "Bob");
-		ecs_set(d->world, e, EgSocketTCP, {sock1});
+		ecs_set(world, e, EgSocketTCP, {sock1});
+		//eg_add_prefab(world, e, prefab);
+		ecs_add_pair(world, e, EcsIsA, prefab);
+		eg_trace_typestr(world, e);
 	}
 	return NULL;
 }
 
-static void EgSocketTCP_OnAdd1(ecs_iter_t *it)
+static void sys_EgSocketAcceptThread(ecs_iter_t *it)
 {
-	EgSocketTCP *s = ecs_term(it, EgSocketTCP, 1);
+	EgSocketTCP          *s = ecs_term(it, EgSocketTCP, 1);
 	EgSocketAcceptThread *t = ecs_term(it, EgSocketAcceptThread, 2);
 	for (int i = 0; i < it->count; i ++)
 	{
-		ecs_trace("Waiting for incoming connections...\n");
+		int sock = s[i].sock;
+		int prefab = t[i].prefab;
+		ecs_trace("Waiting for incoming connections. %i: sock=%i, prefab=%i\n", it->entities[i], sock, prefab);
 		pthread_t thread;
 		struct eg_acceptor_params * params = malloc(sizeof(struct eg_acceptor_params));
 		params->world = it->world;
 		params->entity = it->entities[i];
 		params->sock = s[i].sock;
+		params->prefab = t[i].prefab;
+		//printf("prefab %jx %jx\n", params->prefab, t[i].prefab);
 		pthread_create(&thread, NULL, eg_acceptor, params);
+	}
+}
+
+
+static void sys_EgWebsockMeta(ecs_iter_t *it)
+{
+	EgSocketTCP   *s = ecs_term(it, EgSocketTCP, 1);
+	EgWebsockMeta *w = ecs_term(it, EgWebsockMeta, 2);
+	for (int i = 0; i < it->count; i ++)
+	{
+		ecs_trace("sys_EgWebsockMeta %i %i", s[i].sock, w[i].meta);
 	}
 }
 
@@ -189,9 +229,11 @@ void ws_flecs_init(ecs_world_t *world)
 	 ECS_COMPONENT_DEFINE(world, EgSocketPort);
 	 ECS_COMPONENT_DEFINE(world, EgSocketMaxconn);
 	 ECS_COMPONENT_DEFINE(world, EgSocketAcceptThread);
+	 ECS_COMPONENT_DEFINE(world, EgWebsockMeta);
 	 //ECS_SYSTEM(world, system_ws_acceptor, EcsOnUpdate, [in] EgSocketTCP);
-	 ECS_OBSERVER(world, EgSocketTCP_OnAdd, EcsOnAdd, EgSocketTCP, EgSocketPort, EgSocketMaxconn);
-	 ECS_OBSERVER(world, EgSocketTCP_OnAdd1, EcsOnAdd, EgSocketTCP, EgSocketAcceptThread);
+	 ECS_OBSERVER(world, sys_EgSocketTCP, EcsOnSet, EgSocketTCP, EgSocketPort, EgSocketMaxconn);
+	 ECS_OBSERVER(world, sys_EgSocketAcceptThread, EcsOnSet, EgSocketTCP, EgSocketAcceptThread);
+	 ECS_OBSERVER(world, sys_EgWebsockMeta, EcsOnAdd, EgSocketTCP, EgWebsockMeta);
 }
 
 

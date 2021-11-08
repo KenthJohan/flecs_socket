@@ -17,21 +17,12 @@ typedef struct {
 } EgSocketMaxconn;
 
 typedef struct {
-	ecs_world_t *world;
-	ecs_entity_t entity;
-	int sock;
+	ecs_entity_t prefab;
 } EgSocketAcceptThread;
 
 typedef struct {
 	int meta;
 } EgWebsockMeta;
-
-
-
-
-typedef struct {
-	int meta;
-} EgAccept;
 
 
 extern ECS_COMPONENT_DECLARE(EgSocketTCP);

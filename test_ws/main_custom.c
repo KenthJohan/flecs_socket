@@ -24,22 +24,24 @@
 #include "ecs_ws.h"
 
 
-
-
-
 int main(int argc, char * argv[])
 {
 	eg_ws_init();
 	ecs_world_t *world = ecs_init_w_args(argc, argv);
 	ws_flecs_init(world);
+
 	ecs_log_set_level(1);
 
+	ecs_entity_t ws_prefab = ecs_new_prefab(world, "WebSocket Prefab");
+	ecs_set(world, ws_prefab, EgWebsockMeta, {50});
+	ecs_set_override(world, ws_prefab, EgWebsockMeta, {55});
 
 	ecs_entity_t e = ecs_set_name(world, 0, "MyEntity");
 	ecs_add(world, e, EgSocketTCP);
 	ecs_set(world, e, EgSocketPort, {8080});
 	ecs_set(world, e, EgSocketMaxconn, {8});
-	ecs_set(world, e, EgSocketAcceptThread, {0});
+	ecs_set(world, e, EgSocketAcceptThread, {ws_prefab});
+
 
 
 	while(1)
