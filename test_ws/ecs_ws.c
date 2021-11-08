@@ -69,8 +69,8 @@ static void eg_socket_seti(int sock, int level, int optname, int value)
 	}
 }
 
-
-void eg_err_win32(char * filename, int line)
+#define EG_ERR_WIN32() eg_err_win32(__FILE__, __LINE__)
+static void eg_err_win32(char * filename, int line)
 {
 	wchar_t buf[256];
 	DWORD e = GetLastError();
@@ -80,13 +80,7 @@ void eg_err_win32(char * filename, int line)
 	_ecs_err(filename, line, "GetLastError: %S (%li)\n", buf, e);
 }
 
-#define EG_ERR_WIN32() eg_err_win32(__FILE__, __LINE__)
-
-
-
-
-
-static void eg_print_address(int sock)
+static void eg_trace_address(int sock)
 {
 	struct sockaddr_in addr;
 	char addrstr[INET_ADDRSTRLEN];
@@ -105,7 +99,7 @@ static void eg_print_address(int sock)
 
 
 
-void EgSocketTCP_OnAdd(ecs_iter_t *it)
+static void EgSocketTCP_OnAdd(ecs_iter_t *it)
 {
 	EgSocketTCP *s = ecs_term(it, EgSocketTCP, 1);
 	EgSocketPort *p = ecs_term(it, EgSocketPort, 2);
@@ -130,7 +124,7 @@ void EgSocketTCP_OnAdd(ecs_iter_t *it)
 			continue;
 		}
 		listen(sock, m[i].backlog);
-		eg_print_address(sock);
+		eg_trace_address(sock);
 		s[i].sock = sock;
 	}
 }
@@ -139,7 +133,7 @@ void EgSocketTCP_OnAdd(ecs_iter_t *it)
 
 
 
-struct eg_acceptor_data
+struct eg_acceptor_params
 {
 	ecs_world_t *world;
 	ecs_entity_t entity;
@@ -148,27 +142,30 @@ struct eg_acceptor_data
 
 static void * eg_acceptor(void * data)
 {
-	struct eg_acceptor_data * d = data;
+	struct eg_acceptor_params * d = data;
+	int sock = d->sock;
+	ecs_world_t *world = d->world;
+	ecs_entity_t entity = d->entity;
+	free(data);
 	struct sockaddr_in client;
 	int len = sizeof(struct sockaddr_in);
 	while (1)
 	{
-		int sock = accept(d->sock, (struct sockaddr *)&client, (socklen_t *)&len);
-		if (sock < 0)
+		int sock1 = accept(sock, (struct sockaddr *)&client, (socklen_t *)&len);
+		if (sock1 < 0)
 		{
 			EG_ERR_WIN32();
-			ecs_remove(d->world, d->entity, EgSocketAcceptThread);
+			ecs_remove(world, entity, EgSocketAcceptThread);
 			break;
 		}
-		eg_print_address(sock);
-		ecs_entity_t e = ecs_new_entity(d->world, "Bob");
-		ecs_set(d->world, e, EgSocketTCP, {sock});
+		eg_trace_address(sock1);
+		ecs_entity_t e = ecs_new_entity(world, "Bob");
+		ecs_set(d->world, e, EgSocketTCP, {sock1});
 	}
 	return NULL;
 }
 
-
-void EgSocketTCP_OnAdd1(ecs_iter_t *it)
+static void EgSocketTCP_OnAdd1(ecs_iter_t *it)
 {
 	EgSocketTCP *s = ecs_term(it, EgSocketTCP, 1);
 	EgSocketAcceptThread *t = ecs_term(it, EgSocketAcceptThread, 2);
@@ -176,11 +173,11 @@ void EgSocketTCP_OnAdd1(ecs_iter_t *it)
 	{
 		ecs_trace("Waiting for incoming connections...\n");
 		pthread_t thread;
-		struct eg_acceptor_data * data = malloc(sizeof(struct eg_acceptor_data));
-		data->world = it->world;
-		data->entity = it->entities[i];
-		data->sock = s[i].sock;
-		pthread_create(&thread, NULL, eg_acceptor, data);
+		struct eg_acceptor_params * params = malloc(sizeof(struct eg_acceptor_params));
+		params->world = it->world;
+		params->entity = it->entities[i];
+		params->sock = s[i].sock;
+		pthread_create(&thread, NULL, eg_acceptor, params);
 	}
 }
 
