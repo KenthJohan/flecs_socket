@@ -149,10 +149,10 @@ struct eg_acceptor_params
 };
 
 //How to copy all components and values from one entity and paste them into another entity?
-static void eg_copy_components(ecs_world_t *world, ecs_entity_t e, ecs_entity_t prefab)
+static void eg_copy_components(ecs_world_t *world, ecs_entity_t dst, ecs_entity_t src)
 {
-	eg_trace_typestr(world, prefab);
-	ecs_type_t t = ecs_get_type(world, prefab);
+	eg_trace_typestr(world, src);
+	ecs_type_t t = ecs_get_type(world, src);
 	ecs_entity_t *ids = ecs_vector_first(t, ecs_entity_t);
 	int32_t count = ecs_vector_count(t);
 	for (int32_t i = 0; i < count; ++i)
@@ -160,8 +160,8 @@ static void eg_copy_components(ecs_world_t *world, ecs_entity_t e, ecs_entity_t 
 		if (ids[i] == EcsPrefab) {continue;}
 		if (ECS_HAS_RELATION(ids[i], ecs_id(EcsIdentifier))) {continue;}
 		const EcsComponent *component_ptr = ecs_get(world, ids[i], EcsComponent);
-		void const * value = ecs_get_id(world, prefab, ids[i]);
-		ecs_set_id(world, e, ids[i], component_ptr->size, value);
+		void const * value = ecs_get_id(world, src, ids[i]);
+		ecs_set_id(world, dst, ids[i], component_ptr->size, value);
 	}
 }
 
