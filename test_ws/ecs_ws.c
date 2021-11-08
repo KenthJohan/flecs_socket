@@ -149,15 +149,19 @@ struct eg_acceptor_params
 };
 
 //How to copy all components and values from one entity and paste them into another entity?
-static void eg_add_prefab(ecs_world_t *world, ecs_entity_t e, ecs_entity_t prefab)
+static void eg_copy_components(ecs_world_t *world, ecs_entity_t e, ecs_entity_t prefab)
 {
+	eg_trace_typestr(world, prefab);
 	ecs_type_t t = ecs_get_type(world, prefab);
 	ecs_entity_t *ids = ecs_vector_first(t, ecs_entity_t);
-	for (int32_t i = 0; i < ecs_vector_count(t); ++i)
+	int32_t count = ecs_vector_count(t);
+	for (int32_t i = 0; i < count; ++i)
 	{
-		//void const * a = ecs_get_id(world, prefab, ids[i]);
-		//ecs_add_id(world, e, ids[i]);
-		//ecs_set_id(world, e, ids[i], 1, a);
+		if (ids[i] == EcsPrefab) {continue;}
+		if (ECS_HAS_RELATION(ids[i], ecs_id(EcsIdentifier))) {continue;}
+		const EcsComponent *component_ptr = ecs_get(world, ids[i], EcsComponent);
+		void const * value = ecs_get_id(world, prefab, ids[i]);
+		ecs_set_id(world, e, ids[i], component_ptr->size, value);
 	}
 }
 
@@ -183,9 +187,9 @@ static void * eg_acceptor(void * data)
 		eg_trace_address(sock1);
 		ecs_entity_t e = ecs_new_entity(world, "Bob");
 		ecs_set(world, e, EgSocketTCP, {sock1});
-		//eg_add_prefab(world, e, prefab);
-		ecs_add_pair(world, e, EcsIsA, prefab);
-		eg_trace_typestr(world, e);
+		eg_trace_typestr(world, prefab);
+		eg_copy_components(world, e, prefab);
+		//ecs_add_pair(world, e, EcsIsA, prefab);
 	}
 	return NULL;
 }
@@ -233,7 +237,7 @@ void ws_flecs_init(ecs_world_t *world)
 	 //ECS_SYSTEM(world, system_ws_acceptor, EcsOnUpdate, [in] EgSocketTCP);
 	 ECS_OBSERVER(world, sys_EgSocketTCP, EcsOnSet, EgSocketTCP, EgSocketPort, EgSocketMaxconn);
 	 ECS_OBSERVER(world, sys_EgSocketAcceptThread, EcsOnSet, EgSocketTCP, EgSocketAcceptThread);
-	 ECS_OBSERVER(world, sys_EgWebsockMeta, EcsOnAdd, EgSocketTCP, EgWebsockMeta);
+	 ECS_OBSERVER(world, sys_EgWebsockMeta, EcsOnSet, EgSocketTCP, EgWebsockMeta);
 }
 
 

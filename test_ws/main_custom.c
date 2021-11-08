@@ -34,7 +34,7 @@ int main(int argc, char * argv[])
 
 	ecs_entity_t ws_prefab = ecs_new_prefab(world, "WebSocket Prefab");
 	ecs_set(world, ws_prefab, EgWebsockMeta, {50});
-	ecs_set_override(world, ws_prefab, EgWebsockMeta, {55});
+	//ecs_set_override(world, ws_prefab, EgWebsockMeta, {55});
 
 	ecs_entity_t e = ecs_set_name(world, 0, "MyEntity");
 	ecs_add(world, e, EgSocketTCP);
