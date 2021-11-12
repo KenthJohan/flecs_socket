@@ -31,38 +31,36 @@ int main(int argc, char * argv[])
 	world = ecs_init_w_args(argc, argv);
 	ecs_log_set_level(1);
 	flecs_uv_init(world);
-	comps_init(world);
 
-	/*
-	ecs_entity_t ws_prefab = ecs_new_prefab(world, "WebSocket Prefab");
-	ecs_set(world, ws_prefab, EgWS, {50});
-	ecs_set(world, ws_prefab, EgReqHTTP, {50});
-	//ecs_set_override(world, ws_prefab, EgWebsockMeta, {55});
 
-	ecs_entity_t e = ecs_set_name(world, 0, "MyEntity");
-	ecs_add(world, e, EgSocket);
-	ecs_add(world, e, EgTCP);
-	ecs_set(world, e, EgPort, {8080});
-	ecs_set(world, e, EgMaxconn, {8});
-	ecs_set(world, e, EgAcceptThread, {ws_prefab});
-	*/
+	ecs_entity_t loop;
 
-	ecs_entity_t e = ecs_new_entity(world, "loop");
-	ecs_add(world, e, uv_loop_t);
+	{
+		loop = ecs_new_entity(world, "loop");
+		ecs_add(world, loop, uv_loop_t);
+	}
 
-	ecs_entity_t e1 = ecs_new_entity(world, "tcp_server");
-	ecs_add(world, e1, uv_tcp_t);
-	ecs_add_pair(world, e1, EcsChildOf, e);
+
+	{
+		sockaddr_in addr;
+		uv_ip4_addr("0.0.0.0", 7000, &addr);
+		ecs_entity_t e = ecs_new_entity(world, "tcp_server");
+		ecs_add(world, e, uv_tcp_t);
+		ecs_add_pair(world, e, EcsChildOf, loop);
+		ecs_set_ptr(world, e, sockaddr_in, &addr);
+	}
+
 
 
 
 	int i = 0;
+	printf("main loop %i.\n", i++);
 	while(1)
 	{
 		ecs_progress(world, 0.0f);
 		ecs_os_sleep(1, 0);
 		//uv_run(loop, UV_RUN_NOWAIT);
-		printf("main loop %i\n", i++);
+		printf("main loop %i.\n", i++);
 	}
 
 
