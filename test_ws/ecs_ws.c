@@ -16,17 +16,32 @@ typedef int socklen_t;
 #include <flecs.h>
 #include "ecs_ws.h"
 
-ECS_COMPONENT_DECLARE(EgSocketTCP);
-ECS_COMPONENT_DECLARE(EgSocketPort);
-ECS_COMPONENT_DECLARE(EgSocketMaxconn);
-ECS_COMPONENT_DECLARE(EgSocketAcceptThread);
-ECS_COMPONENT_DECLARE(EgWebsockMeta);
+ECS_COMPONENT_DECLARE(EgSocket);
+ECS_COMPONENT_DECLARE(EgTCP);
+ECS_COMPONENT_DECLARE(EgUDP);
+ECS_COMPONENT_DECLARE(EgPort);
+ECS_COMPONENT_DECLARE(EgMaxconn);
+ECS_COMPONENT_DECLARE(EgAcceptThread);
+ECS_COMPONENT_DECLARE(EgWS);
+ECS_COMPONENT_DECLARE(EgReqHTTP);
 
 #define MAX_CLIENTS 8
 
 
 
+struct eg_threadparams
+{
+	ecs_world_t *world;
+	ecs_entity_t entity;
+};
 
+struct eg_threadparams * eg_threadparams_malloc(ecs_world_t *world, ecs_entity_t entity)
+{
+	struct eg_threadparams * params = malloc(sizeof(struct eg_threadparams));
+	params->world = world;
+	params->entity = entity;
+	return params;
+}
 
 
 
@@ -104,13 +119,12 @@ static void eg_trace_typestr(ecs_world_t *world, ecs_entity_t e)
 	ecs_os_free(type_str);
 }
 
-
-
 static void sys_EgSocketTCP(ecs_iter_t *it)
 {
-	EgSocketTCP *s = ecs_term(it, EgSocketTCP, 1);
-	EgSocketPort *p = ecs_term(it, EgSocketPort, 2);
-	EgSocketMaxconn *m = ecs_term(it, EgSocketMaxconn, 3);
+	EgSocket  *s = ecs_term(it, EgSocket,  1);
+	EgTCP     *a = ecs_term(it, EgTCP,     2);
+	EgPort    *p = ecs_term(it, EgPort,    3);
+	EgMaxconn *m = ecs_term(it, EgMaxconn, 4);
 	for (int i = 0; i < it->count; i ++)
 	{
 		ecs_trace("EgSocketTCP_OnAdd %i", i);
@@ -135,10 +149,6 @@ static void sys_EgSocketTCP(ecs_iter_t *it)
 		s[i].sock = sock;
 	}
 }
-
-
-
-
 
 struct eg_acceptor_params
 {
@@ -167,12 +177,14 @@ static void eg_copy_components(ecs_world_t *world, ecs_entity_t dst, ecs_entity_
 
 static void * eg_acceptor(void * data)
 {
-	struct eg_acceptor_params * d = data;
-	int sock = d->sock;
-	ecs_world_t *world = d->world;
-	ecs_entity_t entity = d->entity;
-	ecs_entity_t prefab = d->prefab;
-	//free(data);
+	ecs_world_t *world = ((struct eg_threadparams * )data)->world;
+	ecs_entity_t entity = ((struct eg_threadparams * )data)->entity;
+	free(data);
+
+	//EgAcceptThread * a = ecs_get(world, entity, EgAcceptThread);
+
+	int sock = ecs_get(world, entity, EgSocket)->sock;
+	ecs_entity_t prefab = ecs_get(world, entity, EgAcceptThread)->prefab;
 	struct sockaddr_in client;
 	int len = sizeof(struct sockaddr_in);
 	while (1)
@@ -181,12 +193,12 @@ static void * eg_acceptor(void * data)
 		if (sock1 < 0)
 		{
 			EG_ERR_WIN32();
-			ecs_remove(world, entity, EgSocketAcceptThread);
+			ecs_remove(world, entity, EgAcceptThread);
 			break;
 		}
 		eg_trace_address(sock1);
 		ecs_entity_t e = ecs_new_entity(world, "Bob");
-		ecs_set(world, e, EgSocketTCP, {sock1});
+		ecs_set(world, e, EgSocket, {sock1});
 		eg_trace_typestr(world, prefab);
 		eg_copy_components(world, e, prefab);
 		//ecs_add_pair(world, e, EcsIsA, prefab);
@@ -196,32 +208,61 @@ static void * eg_acceptor(void * data)
 
 static void sys_EgSocketAcceptThread(ecs_iter_t *it)
 {
-	EgSocketTCP          *s = ecs_term(it, EgSocketTCP, 1);
-	EgSocketAcceptThread *t = ecs_term(it, EgSocketAcceptThread, 2);
+	EgSocket       *s = ecs_term(it, EgSocket,       1);
+	EgTCP          *a = ecs_term(it, EgTCP,          2);
+	EgAcceptThread *t = ecs_term(it, EgAcceptThread, 3);
 	for (int i = 0; i < it->count; i ++)
 	{
-		int sock = s[i].sock;
-		int prefab = t[i].prefab;
-		ecs_trace("Waiting for incoming connections. %i: sock=%i, prefab=%i\n", it->entities[i], sock, prefab);
+		ecs_trace("Waiting for incoming connections. %i: sock=%i, prefab=%i\n", it->entities[i], s[i].sock, t[i].prefab);
 		pthread_t thread;
-		struct eg_acceptor_params * params = malloc(sizeof(struct eg_acceptor_params));
-		params->world = it->world;
-		params->entity = it->entities[i];
-		params->sock = s[i].sock;
-		params->prefab = t[i].prefab;
 		//printf("prefab %jx %jx\n", params->prefab, t[i].prefab);
-		pthread_create(&thread, NULL, eg_acceptor, params);
+		pthread_create(&thread, NULL, eg_acceptor, eg_threadparams_malloc(it->world, it->entities[i]));
 	}
 }
 
 
-static void sys_EgWebsockMeta(ecs_iter_t *it)
+
+
+static void * eg_wsreader(void * data)
 {
-	EgSocketTCP   *s = ecs_term(it, EgSocketTCP, 1);
-	EgWebsockMeta *w = ecs_term(it, EgWebsockMeta, 2);
+	ecs_world_t *world = ((struct eg_threadparams * )data)->world;
+	ecs_entity_t entity = ((struct eg_threadparams * )data)->entity;
+	free(data);
+
+	EgReqHTTP const * r = ecs_get(world, entity, EgReqHTTP);
+	int sock = ecs_get(world, entity, EgSocket)->sock;
+	while (1)
+	{
+		//ecs_strbuf_t b = ECS_STRBUF_INIT;
+		//ecs_strbuf_appendstrn(b, buf, n);
+
+		{
+			char buf[2796];
+			int n = recv(sock, buf,2796, 0);
+			printf("%i, %.*s\n", n, n, buf);
+		}
+		{
+			//int result = recv(connection,&buffer,1,MSG_PEEK);
+
+			char buf[1];
+			int n = recv(sock, buf,1, 0);
+			printf("%i, %.*s\n", n, n, buf);
+		}
+	}
+	return NULL;
+}
+
+
+static void sys_EgWS(ecs_iter_t *it)
+{
+	EgSocket   *s = ecs_term(it, EgSocket, 1);
+	EgWS       *w = ecs_term(it, EgWS, 2);
+	EgReqHTTP  *r = ecs_term(it, EgReqHTTP, 3);
 	for (int i = 0; i < it->count; i ++)
 	{
-		ecs_trace("sys_EgWebsockMeta %i %i", s[i].sock, w[i].meta);
+		ecs_trace("sys_EgWebsockMeta %i %i", s[i].sock, w[i].unused);
+		pthread_t thread;
+		pthread_create(&thread, NULL, eg_wsreader, eg_threadparams_malloc(it->world, it->entities[i]));
 	}
 }
 
@@ -229,15 +270,18 @@ static void sys_EgWebsockMeta(ecs_iter_t *it)
 
 void ws_flecs_init(ecs_world_t *world)
 {
-	 ECS_COMPONENT_DEFINE(world, EgSocketTCP);
-	 ECS_COMPONENT_DEFINE(world, EgSocketPort);
-	 ECS_COMPONENT_DEFINE(world, EgSocketMaxconn);
-	 ECS_COMPONENT_DEFINE(world, EgSocketAcceptThread);
-	 ECS_COMPONENT_DEFINE(world, EgWebsockMeta);
+	 ECS_COMPONENT_DEFINE(world, EgSocket);
+	 ECS_COMPONENT_DEFINE(world, EgTCP);
+	 ECS_COMPONENT_DEFINE(world, EgUDP);
+	 ECS_COMPONENT_DEFINE(world, EgWS);
+	 ECS_COMPONENT_DEFINE(world, EgPort);
+	 ECS_COMPONENT_DEFINE(world, EgMaxconn);
+	 ECS_COMPONENT_DEFINE(world, EgAcceptThread);
+	 ECS_COMPONENT_DEFINE(world, EgReqHTTP);
 	 //ECS_SYSTEM(world, system_ws_acceptor, EcsOnUpdate, [in] EgSocketTCP);
-	 ECS_OBSERVER(world, sys_EgSocketTCP, EcsOnSet, EgSocketTCP, EgSocketPort, EgSocketMaxconn);
-	 ECS_OBSERVER(world, sys_EgSocketAcceptThread, EcsOnSet, EgSocketTCP, EgSocketAcceptThread);
-	 ECS_OBSERVER(world, sys_EgWebsockMeta, EcsOnSet, EgSocketTCP, EgWebsockMeta);
+	 ECS_OBSERVER(world, sys_EgSocketTCP, EcsOnSet, EgSocket, EgTCP, EgPort, EgMaxconn);
+	 ECS_OBSERVER(world, sys_EgSocketAcceptThread, EcsOnSet, EgSocket, EgTCP, EgAcceptThread);
+	 ECS_OBSERVER(world, sys_EgWS, EcsOnSet, EgSocket, EgWS, EgReqHTTP);
 }
 
 

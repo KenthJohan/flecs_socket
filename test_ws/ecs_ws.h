@@ -6,30 +6,47 @@
 
 typedef struct {
 	int sock;
-} EgSocketTCP;
+} EgSocket;
+
+typedef struct {
+	int unused;
+} EgTCP;
+
+typedef struct {
+	int unused;
+} EgUDP;
+
+typedef struct {
+	int unused;
+} EgWS;
 
 typedef struct {
 	int port;
-} EgSocketPort;
+} EgPort;
+
+typedef struct {
+	ecs_strbuf_t content;
+} EgReqHTTP;
 
 typedef struct {
 	int backlog;
-} EgSocketMaxconn;
+} EgMaxconn;
 
 typedef struct {
 	ecs_entity_t prefab;
-} EgSocketAcceptThread;
-
-typedef struct {
-	int meta;
-} EgWebsockMeta;
+} EgAcceptThread;
 
 
-extern ECS_COMPONENT_DECLARE(EgSocketTCP);
-extern ECS_COMPONENT_DECLARE(EgSocketPort);
-extern ECS_COMPONENT_DECLARE(EgSocketMaxconn);
-extern ECS_COMPONENT_DECLARE(EgSocketAcceptThread);
-extern ECS_COMPONENT_DECLARE(EgWebsockMeta);
+
+
+extern ECS_COMPONENT_DECLARE(EgSocket);
+extern ECS_COMPONENT_DECLARE(EgTCP);
+extern ECS_COMPONENT_DECLARE(EgUDP);
+extern ECS_COMPONENT_DECLARE(EgPort);
+extern ECS_COMPONENT_DECLARE(EgMaxconn);
+extern ECS_COMPONENT_DECLARE(EgAcceptThread);
+extern ECS_COMPONENT_DECLARE(EgWS);
+extern ECS_COMPONENT_DECLARE(EgReqHTTP);
 
 
 

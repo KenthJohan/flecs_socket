@@ -33,14 +33,16 @@ int main(int argc, char * argv[])
 	ecs_log_set_level(1);
 
 	ecs_entity_t ws_prefab = ecs_new_prefab(world, "WebSocket Prefab");
-	ecs_set(world, ws_prefab, EgWebsockMeta, {50});
+	ecs_set(world, ws_prefab, EgWS, {50});
+	ecs_set(world, ws_prefab, EgReqHTTP, {50});
 	//ecs_set_override(world, ws_prefab, EgWebsockMeta, {55});
 
 	ecs_entity_t e = ecs_set_name(world, 0, "MyEntity");
-	ecs_add(world, e, EgSocketTCP);
-	ecs_set(world, e, EgSocketPort, {8080});
-	ecs_set(world, e, EgSocketMaxconn, {8});
-	ecs_set(world, e, EgSocketAcceptThread, {ws_prefab});
+	ecs_add(world, e, EgSocket);
+	ecs_add(world, e, EgTCP);
+	ecs_set(world, e, EgPort, {8080});
+	ecs_set(world, e, EgMaxconn, {8});
+	ecs_set(world, e, EgAcceptThread, {ws_prefab});
 
 
 
