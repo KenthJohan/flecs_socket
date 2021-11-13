@@ -19,22 +19,16 @@ void main_init()
 #endif
 }
 
-ecs_world_t *world;
-
-
-
 
 
 int main(int argc, char * argv[])
 {
 	main_init();
-	world = ecs_init_w_args(argc, argv);
+	ecs_world_t * world = ecs_init_w_args(argc, argv);
 	ecs_log_set_level(1);
 	flecs_uv_init(world);
 
-
 	ecs_entity_t loop;
-
 	{
 		loop = ecs_new_entity(world, "loop");
 		ecs_add(world, loop, uv_loop_t);
@@ -52,7 +46,6 @@ int main(int argc, char * argv[])
 
 
 
-
 	int i = 0;
 	printf("main loop %i.\n", i++);
 	while(1)
@@ -62,10 +55,6 @@ int main(int argc, char * argv[])
 		//uv_run(loop, UV_RUN_NOWAIT);
 		printf("main loop %i.\n", i++);
 	}
-
-
-
-
 
 
 	return 0;

@@ -63,6 +63,31 @@ struct worldent * worldent_malloc(ecs_world_t *world, ecs_entity_t entity)
 	return params;
 }
 
+int get_port(struct sockaddr_storage * addr)
+{
+	switch (addr->ss_family)
+	{
+	case AF_INET:
+		return ntohs(((struct sockaddr_in *)addr)->sin_port);
+		break;
+	case AF_INET6:
+		return ntohs(((struct sockaddr_in6 *)addr)->sin6_port);
+		break;
+	}
+}
+
+
+int get_name(uv_tcp_t *t, char ipstr[UV_IF_NAMESIZE+10])
+{
+	struct sockaddr_storage addr = { 0 };
+	int alen = sizeof(addr);
+	int r = uv_tcp_getpeername(t, (struct sockaddr *)&addr, &alen);
+	uv_inet_ntop(addr.ss_family, &addr, ipstr, UV_IF_NAMESIZE);
+	char portstr[10];
+	snprintf(portstr, 10, ":%i", get_port(&addr));
+	ecs_os_strcat(ipstr, portstr);
+	return r;
+}
 
 
 
@@ -78,20 +103,25 @@ void on_new_connection(uv_stream_t *server, int status)
 		return;
 	}
 
-	uv_tcp_t *client = (uv_tcp_t*)malloc(sizeof(uv_tcp_t));
+	ecs_entity_t e = ecs_new_entity(world, "TCP_Client");
+	//uv_tcp_t * client = malloc(sizeof(uv_tcp_t));
+	uv_tcp_t * client = ecs_emplace(world, e, uv_tcp_t);
 	uv_tcp_init (loop, client);
 	if (uv_accept(server, (uv_stream_t*) client) == 0)
 	{
-		ecs_trace("uv_read_start %i", status);
-		uv_read_start((uv_stream_t*) client, alloc_buffer, echo_read);
-		ecs_entity_t e = ecs_new_entity(world, "TCP_Client");
+		char ipstr[UV_IF_NAMESIZE+10];
+		get_name(client, ipstr);
+		ecs_trace("accepted %s", ipstr);
+		ecs_set_name(world, e, ipstr);
 		ecs_add_pair(world, e, EcsChildOf, parent);
 		ecs_set_ptr(world, e, uv_tcp_t, client);
+		//uv_tcp_t * c = ecs_get_mut(world, e, uv_tcp_t, NULL);
+		uv_read_start((uv_stream_t*) client, alloc_buffer, echo_read);
 	}
 	else
 	{
 		ecs_trace("uv_close %i", status);
-		uv_close((uv_handle_t*) client, NULL);
+		uv_close((uv_handle_t*) &client, NULL);
 	}
 }
 
@@ -171,9 +201,8 @@ void flecs_uv_init(ecs_world_t *world)
 	//ECS_TAG_DEFINE(world, MyTag);
 
 	ECS_OBSERVER(world, obs_loop, EcsOnAdd, uv_loop_t);
-	ECS_SYSTEM(world, sys_run, EcsOnUpdate, uv_loop_t);
-
 	ECS_OBSERVER(world, obs_tcpserver, EcsOnSet, uv_loop_t(parent), uv_tcp_t, sockaddr_in);
-	//ECS_OBSERVER(world, obs_accept, EcsOnAdd, uv_loop_t(parent), uv_stream_t(parent));
+
+	ECS_SYSTEM(world, sys_run, EcsOnUpdate, uv_loop_t);
 	ECS_SYSTEM(world, sys_TestComponent, EcsOnUpdate, uv_tcp_t(parent), uv_tcp_t);
 }
