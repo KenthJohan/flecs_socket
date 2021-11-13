@@ -10,9 +10,25 @@ typedef struct
 } TestComponent;
 
 
-extern ECS_COMPONENT_DECLARE(uv_loop_t);
-extern ECS_COMPONENT_DECLARE(uv_tcp_t);
-extern ECS_COMPONENT_DECLARE(uv_stream_t);
+typedef struct
+{
+	uv_loop_t * loop;
+} UvLoop;
+
+typedef struct
+{
+	uv_tcp_t * stream;
+} UvTcp;
+
+typedef struct
+{
+	uv_stream_t * stream;
+} UvStream;
+
+
+extern ECS_COMPONENT_DECLARE(UvLoop);
+extern ECS_COMPONENT_DECLARE(UvTcp);
+extern ECS_COMPONENT_DECLARE(UvStream);
 typedef struct sockaddr_in sockaddr_in;
 extern ECS_COMPONENT_DECLARE(sockaddr_in);
 extern ECS_COMPONENT_DECLARE(TestComponent);

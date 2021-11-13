@@ -1,12 +1,45 @@
 #include <pthread.h>
 #include "flecs_uv.h"
 
-ECS_COMPONENT_DECLARE(uv_loop_t);
-ECS_COMPONENT_DECLARE(uv_tcp_t);
-ECS_COMPONENT_DECLARE(uv_stream_t);
+ECS_COMPONENT_DECLARE(UvLoop);
+static ECS_CTOR(UvLoop, ptr, {ptr->loop = NULL;})
+static ECS_DTOR(UvLoop, ptr, {if(ptr->loop){ecs_os_free(ptr->loop);}})
+static ECS_COPY(UvLoop, dst, src, {dst->loop = src->loop;})
+static ECS_MOVE(UvLoop, dst, src, {dst->loop = src->loop;src->loop = NULL;})
+
+ECS_COMPONENT_DECLARE(UvTcp);
+static ECS_CTOR(UvTcp, ptr, {ptr->stream = NULL;})
+static ECS_DTOR(UvTcp, ptr, {if(ptr->stream){ecs_os_free(ptr->stream);}})
+static ECS_COPY(UvTcp, dst, src, {dst->stream = src->stream;})
+static ECS_MOVE(UvTcp, dst, src, {dst->stream = src->stream;src->stream = NULL;})
+
+ECS_COMPONENT_DECLARE(UvStream);
+static ECS_CTOR(UvStream, ptr, {ptr->stream = NULL;})
+static ECS_DTOR(UvStream, ptr, {if(ptr->stream){ecs_os_free(ptr->stream);}})
+static ECS_COPY(UvStream, dst, src, {dst->stream = src->stream;})
+static ECS_MOVE(UvStream, dst, src, {dst->stream = src->stream;src->stream = NULL;})
+
 ECS_COMPONENT_DECLARE(sockaddr_in);
 ECS_COMPONENT_DECLARE(TestComponent);
 //ECS_DECLARE(MyTag);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -76,16 +109,29 @@ int get_port(struct sockaddr_storage * addr)
 	}
 }
 
+int uv_ip_name(const struct sockaddr_storage* src, char* dst, size_t size)
+{
+	switch (src->ss_family)
+	{
+	case AF_INET:
+		return uv_inet_ntop(AF_INET, &((struct sockaddr_in *)src)->sin_addr, dst, size);
+		break;
+	case AF_INET6:
+		return uv_inet_ntop(AF_INET6, &((struct sockaddr_in6 *)src)->sin6_addr, dst, size);
+		break;
+	}
+}
 
-int get_name(uv_tcp_t *t, char ipstr[UV_IF_NAMESIZE+10])
+
+int get_name(uv_tcp_t *src, char dst[], int size)
 {
 	struct sockaddr_storage addr = { 0 };
 	int alen = sizeof(addr);
-	int r = uv_tcp_getpeername(t, (struct sockaddr *)&addr, &alen);
-	uv_inet_ntop(addr.ss_family, &addr, ipstr, UV_IF_NAMESIZE);
-	char portstr[10];
-	snprintf(portstr, 10, ":%i", get_port(&addr));
-	ecs_os_strcat(ipstr, portstr);
+	char ipstr[UV_IF_NAMESIZE];
+	int r = uv_tcp_getpeername(src, (struct sockaddr *)&addr, &alen);
+	uv_ip_name(&addr, ipstr, UV_IF_NAMESIZE);
+	int port = get_port(&addr);
+	snprintf(dst, size, "TCP//%s:%d", ipstr, port);
 	return r;
 }
 
@@ -103,19 +149,18 @@ void on_new_connection(uv_stream_t *server, int status)
 		return;
 	}
 
-	ecs_entity_t e = ecs_new_entity(world, "TCP_Client");
-	//uv_tcp_t * client = malloc(sizeof(uv_tcp_t));
-	uv_tcp_t * client = ecs_emplace(world, e, uv_tcp_t);
+	ecs_entity_t e = ecs_new(world, UvTcp);
+	uv_tcp_t * client = malloc(sizeof(uv_tcp_t));
+	//uv_tcp_t * client = ecs_get_mut(world, e, uv_tcp_t, NULL);
 	uv_tcp_init (loop, client);
 	if (uv_accept(server, (uv_stream_t*) client) == 0)
 	{
-		char ipstr[UV_IF_NAMESIZE+10];
-		get_name(client, ipstr);
+		char ipstr[128];
+		get_name(client, ipstr, 128);
 		ecs_trace("accepted %s", ipstr);
 		ecs_set_name(world, e, ipstr);
 		ecs_add_pair(world, e, EcsChildOf, parent);
-		ecs_set_ptr(world, e, uv_tcp_t, client);
-		//uv_tcp_t * c = ecs_get_mut(world, e, uv_tcp_t, NULL);
+		ecs_set(world, e, UvTcp, {client});
 		uv_read_start((uv_stream_t*) client, alloc_buffer, echo_read);
 	}
 	else
@@ -134,28 +179,31 @@ void on_new_connection(uv_stream_t *server, int status)
 
 
 
-static void obs_loop(ecs_iter_t *it)
+static void UvLoop_OnAdd(ecs_iter_t *it)
 {
-	ecs_trace("FLECSUV: obs_loop");
-	uv_loop_t *loop = ecs_term(it, uv_loop_t, 1);
+	ecs_trace("FLECSUV: UvLoop_OnAdd");
+	UvLoop *loop = ecs_term(it, UvLoop, 1);
 	for (int i = 0; i < it->count; i ++)
 	{
-		uv_loop_init (loop + i);
+		loop[i].loop = uv_default_loop();
 	}
 }
 
-static void obs_tcpserver(ecs_iter_t *it)
+
+
+
+static void UvTcp_Server_OnSet(ecs_iter_t *it)
 {
-	ecs_trace("FLECSUV: obs_tcpserver %i", !ecs_term_is_owned(it, 1));
-	uv_loop_t *loop = ecs_term(it, uv_loop_t, 1);
-	uv_tcp_t *tcp = ecs_term(it, uv_tcp_t, 2);
+	UvLoop *loop = ecs_term(it, UvLoop, 1); //Parent
+	UvTcp *tcp = ecs_term(it, UvTcp, 2);
 	sockaddr_in *addr = ecs_term(it, sockaddr_in, 3);
 	for (int i = 0; i < it->count; i ++)
 	{
-		uv_tcp_init (loop + i, tcp + i);
-		uv_tcp_bind (tcp + i, (const struct sockaddr*)(addr + i), 0);
-		tcp[i].data = worldent_malloc(NULL, it->entities[i]);
-		int r = uv_listen((uv_stream_t*)(tcp+i), 128, on_new_connection);
+		tcp[i].stream = malloc(sizeof(uv_tcp_t));
+		uv_tcp_init (loop[i].loop, tcp[i].stream);
+		uv_tcp_bind (tcp[i].stream, (const struct sockaddr*)(addr + i), 0);
+		tcp[i].stream->data = worldent_malloc(NULL, it->entities[i]);
+		int r = uv_listen((uv_stream_t*)tcp[i].stream, 128, on_new_connection);
 		if (r)
 		{
 			fprintf(stderr, "Listen error %s\n", uv_strerror(r));
@@ -164,25 +212,22 @@ static void obs_tcpserver(ecs_iter_t *it)
 }
 
 
-static int counter = 0;
-static void sys_run(ecs_iter_t *it)
+static void UvLoop_OnUpdate(ecs_iter_t *it)
 {
-	ecs_trace("FLECSUV: sys_run");
-	uv_loop_t *loop = ecs_term(it, uv_loop_t, 1);
+	UvLoop *loop = ecs_term(it, UvLoop, 1);
 	for (int i = 0; i < it->count; i ++)
 	{
-		loop[i].data = it->world;
-		uv_run (loop + i, UV_RUN_NOWAIT);
-		ecs_trace("FLECSUV: sys_run %i", counter++);
+		loop[i].loop->data = it->world;
+		uv_run (loop[i].loop, UV_RUN_NOWAIT);
 	}
 }
 
 
 static void sys_TestComponent(ecs_iter_t *it)
 {
-	ecs_trace("FLECSUV: sys_TestComponent");
-	uv_tcp_t *server = ecs_term(it, uv_tcp_t, 1);
-	uv_tcp_t *client = ecs_term(it, uv_tcp_t, 2);
+	//ecs_trace("FLECSUV: sys_TestComponent");
+	UvTcp *server = ecs_term(it, UvTcp, 1); // Parent
+	UvTcp *client = ecs_term(it, UvTcp, 2);
 	for (int i = 0; i < it->count; i ++)
 	{
 
@@ -190,19 +235,52 @@ static void sys_TestComponent(ecs_iter_t *it)
 }
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 void flecs_uv_init(ecs_world_t *world)
 {
 	ecs_trace("Init FLECS UV");
-	ECS_COMPONENT_DEFINE(world, uv_loop_t);
-	ECS_COMPONENT_DEFINE(world, uv_tcp_t);
-	ECS_COMPONENT_DEFINE(world, uv_stream_t);
+	ECS_COMPONENT_DEFINE(world, UvLoop);
+	ecs_set_component_actions(world, UvLoop, {
+	.ctor = ecs_ctor(UvLoop),
+	.dtor = ecs_dtor(UvLoop),
+	.copy = ecs_copy(UvLoop),
+	.move = ecs_move(UvLoop)
+	});
+	ECS_COMPONENT_DEFINE(world, UvTcp);
+	ecs_set_component_actions(world, UvTcp, {
+	.ctor = ecs_ctor(UvTcp),
+	.dtor = ecs_dtor(UvTcp),
+	.copy = ecs_copy(UvTcp),
+	.move = ecs_move(UvTcp)
+	});
+	ECS_COMPONENT_DEFINE(world, UvStream);
+	ecs_set_component_actions(world, UvStream, {
+	.ctor = ecs_ctor(UvStream),
+	.dtor = ecs_dtor(UvStream),
+	.copy = ecs_copy(UvStream),
+	.move = ecs_move(UvStream)
+	});
+
 	ECS_COMPONENT_DEFINE(world, sockaddr_in);
 	//ECS_COMPONENT_DEFINE(world, TestComponent);
 	//ECS_TAG_DEFINE(world, MyTag);
 
-	ECS_OBSERVER(world, obs_loop, EcsOnAdd, uv_loop_t);
-	ECS_OBSERVER(world, obs_tcpserver, EcsOnSet, uv_loop_t(parent), uv_tcp_t, sockaddr_in);
+	ECS_TRIGGER(world, UvLoop_OnAdd, EcsOnAdd, UvLoop);
+	ECS_OBSERVER(world, UvTcp_Server_OnSet, EcsOnSet, UvLoop(parent), UvTcp, sockaddr_in);
 
-	ECS_SYSTEM(world, sys_run, EcsOnUpdate, uv_loop_t);
-	ECS_SYSTEM(world, sys_TestComponent, EcsOnUpdate, uv_tcp_t(parent), uv_tcp_t);
+	ECS_SYSTEM(world, UvLoop_OnUpdate, EcsOnUpdate, UvLoop);
+	ECS_SYSTEM(world, sys_TestComponent, EcsOnUpdate, UvTcp(parent), UvTcp);
+
 }
