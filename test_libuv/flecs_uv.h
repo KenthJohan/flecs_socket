@@ -26,9 +26,14 @@ typedef struct
 } UvStream;
 
 
+
+
+
+
 extern ECS_COMPONENT_DECLARE(UvLoop);
 extern ECS_COMPONENT_DECLARE(UvTcp);
 extern ECS_COMPONENT_DECLARE(UvStream);
+extern ECS_COMPONENT_DECLARE(uv_buf_t);
 typedef struct sockaddr_in sockaddr_in;
 extern ECS_COMPONENT_DECLARE(sockaddr_in);
 extern ECS_COMPONENT_DECLARE(TestComponent);

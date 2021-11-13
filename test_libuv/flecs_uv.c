@@ -19,6 +19,15 @@ static ECS_DTOR(UvStream, ptr, {if(ptr->stream){ecs_os_free(ptr->stream);}})
 static ECS_COPY(UvStream, dst, src, {dst->stream = src->stream;})
 static ECS_MOVE(UvStream, dst, src, {dst->stream = src->stream;src->stream = NULL;})
 
+ECS_COMPONENT_DECLARE(uv_buf_t);
+static ECS_CTOR(uv_buf_t, ptr, {ptr->base = NULL;ptr->len = 0;})
+static ECS_DTOR(uv_buf_t, ptr, {ecs_trace("uv_buf_t::ECS_DTOR");if(ptr->base){ecs_os_free(ptr->base);}})
+static ECS_COPY(uv_buf_t, dst, src, {dst->base = ecs_os_memdup(src->base, src->len);dst->len = src->len;})
+static ECS_MOVE(uv_buf_t, dst, src, {dst->base = src->base;dst->len = src->len;src->base = NULL; src->len = 0;})
+static ECS_ON_SET(uv_buf_t, ptr, {
+ecs_trace("uv_buf_t::ECS_ON_SET %p %i", ptr->base, ptr->len);
+})
+
 ECS_COMPONENT_DECLARE(sockaddr_in);
 ECS_COMPONENT_DECLARE(TestComponent);
 //ECS_DECLARE(MyTag);
@@ -59,8 +68,13 @@ void echo_write(uv_write_t *req, int status)
 	free(req);
 }
 
-void echo_read(uv_stream_t *client, ssize_t nread, const uv_buf_t *buf)
+void echo_read(uv_stream_t *client, ssize_t nread, uv_buf_t *buf)
 {
+	uv_loop_t *loop = client->loop;
+	ecs_world_t *world = loop->data;
+
+	//ecs_trace("nread:%i, UV_EOF=%i\n", nread, UV_EOF);
+	ecs_trace("buf: %p %lli", buf->base, buf->len);
 	if (nread < 0)
 	{
 		if (nread != UV_EOF)
@@ -71,15 +85,21 @@ void echo_read(uv_stream_t *client, ssize_t nread, const uv_buf_t *buf)
 	}
 	else if (nread > 0)
 	{
-		uv_write_t *req = (uv_write_t *) malloc(sizeof(uv_write_t));
-		uv_buf_t wrbuf = uv_buf_init(buf->base, nread);
-		uv_write(req, client, &wrbuf, 1, echo_write);
+		ecs_entity_t e = ecs_new(world, uv_buf_t);
+		ecs_set(world, e, uv_buf_t, {nread, buf->base});
+
+
+		//uv_write_t *req = (uv_write_t *) malloc(sizeof(uv_write_t));
+		//uv_buf_t wrbuf = uv_buf_init(buf->base, nread);
+		//uv_write(req, client, &wrbuf, 1, echo_write);
 	}
 
+	/*
 	if (buf->base)
 	{
 		free(buf->base);
 	}
+	*/
 }
 
 struct worldent
@@ -96,7 +116,7 @@ struct worldent * worldent_malloc(ecs_world_t *world, ecs_entity_t entity)
 	return params;
 }
 
-int get_port(struct sockaddr_storage * addr)
+int sockaddr_storage_get_port(struct sockaddr_storage * addr)
 {
 	switch (addr->ss_family)
 	{
@@ -109,7 +129,7 @@ int get_port(struct sockaddr_storage * addr)
 	}
 }
 
-int uv_ip_name(const struct sockaddr_storage* src, char* dst, size_t size)
+int sockaddr_storage_get_name(const struct sockaddr_storage* src, char* dst, size_t size)
 {
 	switch (src->ss_family)
 	{
@@ -129,9 +149,10 @@ int get_name(uv_tcp_t *src, char dst[], int size)
 	int alen = sizeof(addr);
 	char ipstr[UV_IF_NAMESIZE];
 	int r = uv_tcp_getpeername(src, (struct sockaddr *)&addr, &alen);
-	uv_ip_name(&addr, ipstr, UV_IF_NAMESIZE);
-	int port = get_port(&addr);
-	snprintf(dst, size, "TCP//%s:%d", ipstr, port);
+	sockaddr_storage_get_name(&addr, ipstr, UV_IF_NAMESIZE);
+	int port = sockaddr_storage_get_port(&addr);
+	int n = snprintf(dst, size, "TCP//%s:%d", ipstr, port);
+	for(int i = 0; i < n; ++i) {dst[i] = dst[i] == '.' ? '|':dst[i];}
 	return r;
 }
 
@@ -139,7 +160,7 @@ int get_name(uv_tcp_t *src, char dst[], int size)
 
 void on_new_connection(uv_stream_t *server, int status)
 {
-	uv_loop_t * loop = server->loop;
+	uv_loop_t *loop = server->loop;
 	ecs_world_t *world = loop->data;
 	ecs_entity_t parent = ((struct worldent *)server->data)->entity;
 	ecs_trace("on_new_connection %i", status);
@@ -236,6 +257,17 @@ static void sys_TestComponent(ecs_iter_t *it)
 
 
 
+static void uv_buf_t_OnSet(ecs_iter_t *it)
+{
+	//ecs_trace("FLECSUV: sys_TestComponent");
+	uv_buf_t *buf = ecs_term(it, uv_buf_t, 1); // Parent
+	for (int i = 0; i < it->count; i ++)
+	{
+		ecs_trace("%*s", buf->len, buf->base);
+		ecs_delete(it->world, it->entities[i]);
+	}
+}
+
 
 
 
@@ -272,6 +304,22 @@ void flecs_uv_init(ecs_world_t *world)
 	.copy = ecs_copy(UvStream),
 	.move = ecs_move(UvStream)
 	});
+	ECS_COMPONENT_DEFINE(world, uv_buf_t);
+	ecs_set_component_actions(world, uv_buf_t, {
+	.ctor = ecs_ctor(uv_buf_t),
+	.dtor = ecs_dtor(uv_buf_t),
+	.copy = ecs_copy(uv_buf_t),
+	.move = ecs_move(uv_buf_t),
+	.on_set = ecs_on_set(uv_buf_t)
+	});
+	ecs_struct_init(world, &(ecs_struct_desc_t) {
+	.entity.entity = ecs_id(uv_buf_t),
+	.members = {
+	{ .name = "len", .type = ecs_id(ecs_i64_t) },
+	{ .name = "base", .type = ecs_id(ecs_uptr_t) }
+	}
+	});
+
 
 	ECS_COMPONENT_DEFINE(world, sockaddr_in);
 	//ECS_COMPONENT_DEFINE(world, TestComponent);
@@ -279,6 +327,7 @@ void flecs_uv_init(ecs_world_t *world)
 
 	ECS_TRIGGER(world, UvLoop_OnAdd, EcsOnAdd, UvLoop);
 	ECS_OBSERVER(world, UvTcp_Server_OnSet, EcsOnSet, UvLoop(parent), UvTcp, sockaddr_in);
+	ECS_OBSERVER(world, uv_buf_t_OnSet, EcsOnSet, uv_buf_t);
 
 	ECS_SYSTEM(world, UvLoop_OnUpdate, EcsOnUpdate, UvLoop);
 	ECS_SYSTEM(world, sys_TestComponent, EcsOnUpdate, UvTcp(parent), UvTcp);
