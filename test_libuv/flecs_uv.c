@@ -38,70 +38,6 @@ ECS_COMPONENT_DECLARE(TestComponent);
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-void alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf)
-{
-	buf->base = (char*)malloc(suggested_size);
-	buf->len = suggested_size;
-}
-
-void echo_write(uv_write_t *req, int status)
-{
-	if (status)
-	{
-		fprintf(stderr, "Write error %s\n", uv_strerror(status));
-	}
-	free(req);
-}
-
-void echo_read(uv_stream_t *client, ssize_t nread, uv_buf_t *buf)
-{
-	uv_loop_t *loop = client->loop;
-	ecs_world_t *world = loop->data;
-
-	//ecs_trace("nread:%i, UV_EOF=%i\n", nread, UV_EOF);
-	ecs_trace("buf: %p %lli", buf->base, buf->len);
-	if (nread < 0)
-	{
-		if (nread != UV_EOF)
-		{
-			fprintf(stderr, "Read error %s\n", uv_err_name(nread));
-			uv_close((uv_handle_t*) client, NULL);
-		}
-	}
-	else if (nread > 0)
-	{
-		ecs_entity_t e = ecs_new(world, uv_buf_t);
-		ecs_set(world, e, uv_buf_t, {nread, buf->base});
-
-
-		//uv_write_t *req = (uv_write_t *) malloc(sizeof(uv_write_t));
-		//uv_buf_t wrbuf = uv_buf_init(buf->base, nread);
-		//uv_write(req, client, &wrbuf, 1, echo_write);
-	}
-
-	/*
-	if (buf->base)
-	{
-		free(buf->base);
-	}
-	*/
-}
-
 struct worldent
 {
 	ecs_world_t *world;
@@ -158,6 +94,82 @@ int get_name(uv_tcp_t *src, char dst[], int size)
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+void alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf)
+{
+	buf->base = (char*)malloc(suggested_size);
+	buf->len = suggested_size;
+}
+
+void echo_write(uv_write_t *req, int status)
+{
+	if (status)
+	{
+		fprintf(stderr, "Write error %s\n", uv_strerror(status));
+	}
+	free(req);
+}
+
+void echo_read(uv_stream_t *client, ssize_t nread, uv_buf_t *buf)
+{
+	uv_loop_t *loop = client->loop;
+	ecs_world_t *world = loop->data;
+	ecs_entity_t parent = ((struct worldent *)client->data)->entity;
+
+	//ecs_trace("nread:%i, UV_EOF=%i\n", nread, UV_EOF);
+	ecs_trace("buf: %p %lli", buf->base, buf->len);
+	if (nread < 0)
+	{
+		if (nread != UV_EOF)
+		{
+			fprintf(stderr, "Read error %s\n", uv_err_name(nread));
+			uv_close((uv_handle_t*) client, NULL);
+		}
+	}
+	else if (nread > 0)
+	{
+		ecs_entity_t e = ecs_new(world, uv_buf_t);
+		ecs_set(world, e, uv_buf_t, {nread, buf->base});
+		ecs_add_pair(world, e, EcsChildOf, parent);
+
+
+		//uv_write_t *req = (uv_write_t *) malloc(sizeof(uv_write_t));
+		//uv_buf_t wrbuf = uv_buf_init(buf->base, nread);
+		//uv_write(req, client, &wrbuf, 1, echo_write);
+	}
+
+	/*
+	if (buf->base)
+	{
+		free(buf->base);
+	}
+	*/
+}
+
+
+
+
+
 void on_new_connection(uv_stream_t *server, int status)
 {
 	uv_loop_t *loop = server->loop;
@@ -182,6 +194,7 @@ void on_new_connection(uv_stream_t *server, int status)
 		ecs_set_name(world, e, ipstr);
 		ecs_add_pair(world, e, EcsChildOf, parent);
 		ecs_set(world, e, UvTcp, {client});
+		client->data = worldent_malloc(NULL, e);
 		uv_read_start((uv_stream_t*) client, alloc_buffer, echo_read);
 	}
 	else
@@ -221,7 +234,7 @@ static void UvTcp_Server_OnSet(ecs_iter_t *it)
 	for (int i = 0; i < it->count; i ++)
 	{
 		tcp[i].stream = malloc(sizeof(uv_tcp_t));
-		uv_tcp_init (loop[i].loop, tcp[i].stream);
+		uv_tcp_init (loop[0].loop, tcp[i].stream);
 		uv_tcp_bind (tcp[i].stream, (const struct sockaddr*)(addr + i), 0);
 		tcp[i].stream->data = worldent_malloc(NULL, it->entities[i]);
 		int r = uv_listen((uv_stream_t*)tcp[i].stream, 128, on_new_connection);
@@ -256,15 +269,35 @@ static void sys_TestComponent(ecs_iter_t *it)
 }
 
 
+void on_close(uv_handle_t* handle)
+{
+
+}
+
 
 static void uv_buf_t_OnSet(ecs_iter_t *it)
 {
 	//ecs_trace("FLECSUV: sys_TestComponent");
-	uv_buf_t *buf = ecs_term(it, uv_buf_t, 1); // Parent
+	UvTcp *tcp = ecs_term(it, UvTcp, 1); // Parent
+	uv_buf_t *buf = ecs_term(it, uv_buf_t, 2);
 	for (int i = 0; i < it->count; i ++)
 	{
 		ecs_trace("%*s", buf->len, buf->base);
 		ecs_delete(it->world, it->entities[i]);
+
+		uv_write_t *req = (uv_write_t *) malloc(sizeof(uv_write_t));
+		char text[] = "HTTP/1.1 200 OK\r\n\r\n";
+		uv_buf_t wrbuf = uv_buf_init(text, sizeof(text));
+		//uv_buf_t wrbuf = uv_buf_init(buf[i].base, buf[i].len);
+		uv_write(req, (uv_stream_t*)tcp[0].stream, &wrbuf, 1, echo_write);
+		uv_close((uv_handle_t*) tcp[0].stream, on_close);
+
+		//uv_write_t *req = (uv_write_t *) malloc(sizeof(uv_write_t));
+		//uv_buf_t wrbuf = uv_buf_init(buf->base, nread);
+		//uv_write(req, client, &wrbuf, 1, echo_write);
+
+		//printf("HTTP/1.1 200 OK\r\n\r\n");
+		//printf("HTTP/1.1 200 OK\r\n\r\n");
 	}
 }
 
@@ -327,7 +360,7 @@ void flecs_uv_init(ecs_world_t *world)
 
 	ECS_TRIGGER(world, UvLoop_OnAdd, EcsOnAdd, UvLoop);
 	ECS_OBSERVER(world, UvTcp_Server_OnSet, EcsOnSet, UvLoop(parent), UvTcp, sockaddr_in);
-	ECS_OBSERVER(world, uv_buf_t_OnSet, EcsOnSet, uv_buf_t);
+	ECS_OBSERVER(world, uv_buf_t_OnSet, EcsOnAdd, UvTcp(parent), uv_buf_t);
 
 	ECS_SYSTEM(world, UvLoop_OnUpdate, EcsOnUpdate, UvLoop);
 	ECS_SYSTEM(world, sys_TestComponent, EcsOnUpdate, UvTcp(parent), UvTcp);
