@@ -87,8 +87,8 @@ int get_name(uv_tcp_t *src, char dst[], int size)
 	int r = uv_tcp_getpeername(src, (struct sockaddr *)&addr, &alen);
 	sockaddr_storage_get_name(&addr, ipstr, UV_IF_NAMESIZE);
 	int port = sockaddr_storage_get_port(&addr);
-	int n = snprintf(dst, size, "TCP//%s:%d", ipstr, port);
-	for(int i = 0; i < n; ++i) {dst[i] = dst[i] == '.' ? '|':dst[i];}
+	int n = snprintf(dst, size, "tcp://%s:%d", ipstr, port);
+	for(int i = 0; i < n; ++i) {dst[i] = dst[i] == '.' ? ',':dst[i];}
 	return r;
 }
 
@@ -130,7 +130,7 @@ void echo_write(uv_write_t *req, int status)
 	free(req);
 }
 
-void echo_read(uv_stream_t *client, ssize_t nread, uv_buf_t *buf)
+void echo_read(uv_stream_t *client, ssize_t nread, uv_buf_t const *buf)
 {
 	uv_loop_t *loop = client->loop;
 	ecs_world_t *world = loop->data;
@@ -157,13 +157,6 @@ void echo_read(uv_stream_t *client, ssize_t nread, uv_buf_t *buf)
 		//uv_buf_t wrbuf = uv_buf_init(buf->base, nread);
 		//uv_write(req, client, &wrbuf, 1, echo_write);
 	}
-
-	/*
-	if (buf->base)
-	{
-		free(buf->base);
-	}
-	*/
 }
 
 
@@ -275,6 +268,17 @@ void on_close(uv_handle_t* handle)
 }
 
 
+static void UvTcp_OnRemove(ecs_iter_t *it)
+{
+	UvTcp *tcp = ecs_term(it, UvTcp, 1);
+	for (int i = 0; i < it->count; i ++)
+	{
+		ecs_trace("Closing TCP %s", ecs_get_name(it->world, it->entities[i]));
+		uv_close((uv_handle_t*) tcp[i].stream, on_close);
+	}
+}
+
+
 static void uv_buf_t_OnSet(ecs_iter_t *it)
 {
 	//ecs_trace("FLECSUV: sys_TestComponent");
@@ -290,7 +294,7 @@ static void uv_buf_t_OnSet(ecs_iter_t *it)
 		uv_buf_t wrbuf = uv_buf_init(text, sizeof(text));
 		//uv_buf_t wrbuf = uv_buf_init(buf[i].base, buf[i].len);
 		uv_write(req, (uv_stream_t*)tcp[0].stream, &wrbuf, 1, echo_write);
-		uv_close((uv_handle_t*) tcp[0].stream, on_close);
+		//ecs_delete(it->world, it-)
 
 		//uv_write_t *req = (uv_write_t *) malloc(sizeof(uv_write_t));
 		//uv_buf_t wrbuf = uv_buf_init(buf->base, nread);
@@ -361,6 +365,7 @@ void flecs_uv_init(ecs_world_t *world)
 	ECS_TRIGGER(world, UvLoop_OnAdd, EcsOnAdd, UvLoop);
 	ECS_OBSERVER(world, UvTcp_Server_OnSet, EcsOnSet, UvLoop(parent), UvTcp, sockaddr_in);
 	ECS_OBSERVER(world, uv_buf_t_OnSet, EcsOnAdd, UvTcp(parent), uv_buf_t);
+	ECS_OBSERVER(world, UvTcp_OnRemove, EcsOnRemove, UvTcp);
 
 	ECS_SYSTEM(world, UvLoop_OnUpdate, EcsOnUpdate, UvLoop);
 	ECS_SYSTEM(world, sys_TestComponent, EcsOnUpdate, UvTcp(parent), UvTcp);

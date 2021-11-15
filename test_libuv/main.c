@@ -47,7 +47,7 @@ int main(int argc, char * argv[])
 	{
 		sockaddr_in addr;
 		uv_ip4_addr("0.0.0.0", 7000, &addr);
-		ecs_entity_t e = ecs_new_entity(world, "tcp_server");
+		ecs_entity_t e = ecs_new_entity(world, "My TCP Server");
 		ecs_add(world, e, UvTcp);
 		ecs_add_pair(world, e, EcsChildOf, loop);
 		ecs_set_ptr(world, e, sockaddr_in, &addr);
