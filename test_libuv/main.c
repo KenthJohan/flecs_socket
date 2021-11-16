@@ -8,6 +8,7 @@
 #include <flecs.h>
 
 #include "flecs_uv.h"
+#include "flecs_net.h"
 
 
 void main_init()
@@ -32,9 +33,9 @@ int main(int argc, char * argv[])
 	});
 	ecs_set(world, EcsWorld, EcsRest, {0});
 
-	ecs_log_set_level(1);
+	ecs_log_set_level(0);
 
-
+	FlecsNetImport(world);
 	flecs_uv_init(world);
 
 	ecs_entity_t loop;
@@ -45,15 +46,20 @@ int main(int argc, char * argv[])
 
 
 	{
-		sockaddr_in addr;
-		uv_ip4_addr("0.0.0.0", 7000, &addr);
 		ecs_entity_t e = ecs_new_entity(world, "My TCP Server");
+		ecs_set(world, e, IpAddr, {"0.0.0.0"});
+		ecs_set(world, e, Port, {7000});
+		ecs_add(world, e, sockaddr_storage);
 		ecs_add(world, e, UvTcp);
 		ecs_add_pair(world, e, EcsChildOf, loop);
-		ecs_set_ptr(world, e, sockaddr_in, &addr);
 	}
 
-
+	/*
+	{
+		ecs_entity_t e = ecs_new_entity(world, "My TCP Server2");
+		ecs_add(world, e, UvTcp);
+	}
+	*/
 
 
 	//int i = 0;

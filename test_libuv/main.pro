@@ -16,10 +16,12 @@ INCLUDEPATH  += include
 SOURCES += main.c
 SOURCES += flecs.c
 SOURCES += flecs_uv.c
+SOURCES += flecs_net.c
 
 
 HEADERS += comps.h
 HEADERS += flecs.h
 HEADERS += flecs_uv.h
+HEADERS += flecs_net.h
 
 LIBS += -lmingw32 -lws2_32 -lpthread -luv

@@ -10,14 +10,30 @@ typedef struct
 } TestComponent;
 
 
+struct uv_tcp_ecs
+{
+	uv_tcp_t uvtcp;
+	ecs_world_t * world;
+	ecs_entity_t entity;
+};
+
+
+struct uv_loop_ecs
+{
+	uv_loop_t uvloop;
+	ecs_world_t * world;
+	ecs_entity_t entity;
+};
+
+
 typedef struct
 {
-	uv_loop_t * loop;
+	struct uv_loop_ecs * loop;
 } UvLoop;
 
 typedef struct
 {
-	uv_tcp_t * stream;
+	struct uv_tcp_ecs * stream;
 } UvTcp;
 
 typedef struct
@@ -36,8 +52,6 @@ extern ECS_COMPONENT_DECLARE(UvLoop);
 extern ECS_COMPONENT_DECLARE(UvTcp);
 extern ECS_COMPONENT_DECLARE(UvStream);
 extern ECS_COMPONENT_DECLARE(uv_buf_t);
-typedef struct sockaddr_in sockaddr_in;
-extern ECS_COMPONENT_DECLARE(sockaddr_in);
 extern ECS_COMPONENT_DECLARE(TestComponent);
 
 //extern ECS_DECLARE(MyTag);
