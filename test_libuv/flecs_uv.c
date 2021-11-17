@@ -38,37 +38,6 @@ ECS_COMPONENT_DECLARE(TestComponent);
 
 
 
-struct worldent
-{
-	ecs_world_t *world;
-	ecs_entity_t entity;
-};
-
-struct worldent * worldent_malloc(ecs_world_t *world, ecs_entity_t entity)
-{
-	struct worldent * params = malloc(sizeof(struct worldent));
-	params->world = world;
-	params->entity = entity;
-	return params;
-}
-
-
-
-/*
-int get_name(uv_tcp_t *src, char dst[], int size)
-{
-	struct sockaddr_storage addr = { 0 };
-	int alen = sizeof(addr);
-	char ipstr[UV_IF_NAMESIZE];
-	int r = uv_tcp_getpeername(src, (struct sockaddr *)&addr, &alen);
-	sockaddr_storage_get_name(&addr, ipstr, UV_IF_NAMESIZE);
-	int port = sockaddr_storage_get_port(&addr);
-	int n = snprintf(dst, size, "tcp://%s:%d", ipstr, port);
-	for(int i = 0; i < n; ++i) {dst[i] = dst[i] == '.' ? ',':dst[i];}
-	return r;
-}
-*/
-
 
 
 
@@ -94,7 +63,7 @@ int get_name(uv_tcp_t *src, char dst[], int size)
 
 void alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf)
 {
-	buf->base = (char*)malloc(suggested_size);
+	buf->base = (char*)ecs_os_calloc(suggested_size);
 	buf->len = suggested_size;
 }
 
@@ -102,7 +71,7 @@ void echo_write(uv_write_t *req, int status)
 {
 	if (status)
 	{
-		fprintf(stderr, "Write error %s\n", uv_strerror(status));
+		ecs_err("Write error %s\n", uv_strerror(status));
 	}
 	free(req);
 }
@@ -111,25 +80,22 @@ void echo_read(uv_stream_t *client, ssize_t nread, uv_buf_t const *buf)
 {
 	uv_loop_t *loop = client->loop;
 	ecs_world_t *world = loop->data;
-	ecs_entity_t parent = ((struct worldent *)client->data)->entity;
 
 	//ecs_trace("nread:%i, UV_EOF=%i\n", nread, UV_EOF);
-	ecs_trace("buf: %p %lli", buf->base, buf->len);
+	//ecs_trace("buf: %p %lli", buf->base, buf->len);
 	if (nread < 0)
 	{
 		if (nread != UV_EOF)
 		{
-			fprintf(stderr, "Read error %s\n", uv_err_name(nread));
+			ecs_err("Read error %s\n", uv_err_name(nread));
 			uv_close((uv_handle_t*) client, NULL);
 		}
 	}
 	else if (nread > 0)
 	{
-		ecs_entity_t e = ecs_new(world, uv_buf_t);
-		ecs_set(world, e, uv_buf_t, {nread, buf->base});
-		ecs_add_pair(world, e, EcsChildOf, parent);
-
-
+		printf("\n======================\n%*s\n", nread, buf->base);
+		//ecs_entity_t e = ecs_new(world, uv_buf_t);
+		//ecs_set(world, e, uv_buf_t, {nread, buf->base});
 		//uv_write_t *req = (uv_write_t *) malloc(sizeof(uv_write_t));
 		//uv_buf_t wrbuf = uv_buf_init(buf->base, nread);
 		//uv_write(req, client, &wrbuf, 1, echo_write);
@@ -148,18 +114,19 @@ void on_new_connection(uv_stream_t *server, int status)
 	ecs_trace("on_new_connection %i", status);
 	if (status < 0)
 	{
-		fprintf(stderr, "New connection error %s\n", uv_strerror(status));
+		ecs_err("New connection error %s\n", uv_strerror(status));
 		return;
 	}
 
 
 
 	struct uv_tcp_ecs * client = ecs_os_calloc_t(struct uv_tcp_ecs);
-	uv_tcp_init (loop, (uv_tcp_t*)client);
+	uv_tcp_init (loop, (uv_tcp_t*) client);
 	if (uv_accept(server, (uv_stream_t*) client) == 0)
 	{
-		ecs_entity_t e = ecs_new(world, 0);
-		ecs_set_name(world, e, "HEJ");
+		client->world = world;
+		client->entity = ecs_new(world, 0);
+		//ecs_set_name(world, client->entity, "HEJ");
 		struct sockaddr_storage addr = { 0 };
 		int alen = sizeof(addr);
 		int r = uv_tcp_getpeername((uv_tcp_t*) client, (struct sockaddr *)&addr, &alen);
@@ -167,11 +134,11 @@ void on_new_connection(uv_stream_t *server, int status)
 		{
 			ecs_err("Listen error %s\n", uv_strerror(r));
 		}
-		ecs_add_pair(world, e, EcsChildOf, parent);
-		ecs_set(world, e, UvTcp, {client});
-		ecs_set_ptr(world, e, sockaddr_storage, &addr);
-		//client->data = worldent_malloc(NULL, e);
-		//uv_read_start((uv_stream_t*) client, alloc_buffer, echo_read);
+		ecs_set_name_sockaddr(world, client->entity, "tcp://", &addr);
+		ecs_add_pair(world, client->entity, EcsChildOf, parent);
+		ecs_set(world, client->entity, UvTcp, {client});
+		ecs_set_ptr(world, client->entity, sockaddr_storage, &addr);
+		uv_read_start((uv_stream_t*) client, alloc_buffer, echo_read);
 	}
 	else
 	{

@@ -14,3 +14,4 @@ extern ECS_COMPONENT_DECLARE(Port);
 
 
 void FlecsNetImport(ecs_world_t *world);
+int ecs_set_name_sockaddr(ecs_world_t *world, ecs_entity_t entity, char const * prefix, struct sockaddr_storage *addr);
