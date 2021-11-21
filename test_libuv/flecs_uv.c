@@ -1,6 +1,8 @@
 #include <pthread.h>
 #include "flecs_net.h"
 #include "flecs_uv.h"
+#include "circularbuf.h"
+
 
 ECS_COMPONENT_DECLARE(UvLoop);
 static ECS_CTOR(UvLoop, ptr, {ptr->loop = NULL;})
@@ -14,26 +16,11 @@ static ECS_DTOR(UvTcp, ptr, {ecs_trace("UvTcp::ECS_DTOR");if(ptr->stream){ecs_os
 static ECS_COPY(UvTcp, dst, src, {ecs_trace("UvTcp::ECS_COPY");dst->stream = src->stream;})
 static ECS_MOVE(UvTcp, dst, src, {ecs_trace("UvTcp::ECS_MOVE");dst->stream = src->stream;src->stream = NULL;})
 
-ECS_COMPONENT_DECLARE(UvStream);
-static ECS_CTOR(UvStream, ptr, {ptr->stream = NULL;})
-static ECS_DTOR(UvStream, ptr, {if(ptr->stream){ecs_os_free(ptr->stream);}})
-static ECS_COPY(UvStream, dst, src, {dst->stream = src->stream;})
-static ECS_MOVE(UvStream, dst, src, {dst->stream = src->stream;src->stream = NULL;})
-
-ECS_COMPONENT_DECLARE(uv_buf_t);
-static ECS_CTOR(uv_buf_t, ptr, {ptr->base = NULL;ptr->len = 0;})
-static ECS_DTOR(uv_buf_t, ptr, {ecs_trace("uv_buf_t::ECS_DTOR");if(ptr->base){ecs_os_free(ptr->base);}})
-static ECS_COPY(uv_buf_t, dst, src, {dst->base = ecs_os_memdup(src->base, src->len);dst->len = src->len;})
-static ECS_MOVE(uv_buf_t, dst, src, {dst->base = src->base;dst->len = src->len;src->base = NULL; src->len = 0;})
-static ECS_ON_SET(uv_buf_t, ptr, {
-ecs_trace("uv_buf_t::ECS_ON_SET %p %i", ptr->base, ptr->len);
-})
-
-ECS_COMPONENT_DECLARE(TestComponent);
-//ECS_DECLARE(MyTag);
-
-
-
+ECS_COMPONENT_DECLARE(UvUdp);
+static ECS_CTOR(UvUdp, ptr, {ecs_trace("UvUdp::ECS_CTOR");ptr->stream = NULL;})
+static ECS_DTOR(UvUdp, ptr, {ecs_trace("UvUdp::ECS_DTOR");if(ptr->stream){ecs_os_free(ptr->stream);}})
+static ECS_COPY(UvUdp, dst, src, {ecs_trace("UvUdp::ECS_COPY");dst->stream = src->stream;})
+static ECS_MOVE(UvUdp, dst, src, {ecs_trace("UvUdp::ECS_MOVE");dst->stream = src->stream;src->stream = NULL;})
 
 
 
@@ -63,8 +50,10 @@ ECS_COMPONENT_DECLARE(TestComponent);
 
 void alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf)
 {
-	buf->base = (char*)ecs_os_calloc(suggested_size);
-	buf->len = suggested_size;
+	struct uv_tcp_ecs * c = (void*)handle;
+	buf->base = circular_buf_head(&c->buf);
+	buf->len = circular_buf_freespace(&c->buf);
+	ecs_trace("alloc_buffer len: %i", buf->len);
 }
 
 void echo_write(uv_write_t *req, int status)
@@ -78,9 +67,7 @@ void echo_write(uv_write_t *req, int status)
 
 void echo_read(uv_stream_t *client, ssize_t nread, uv_buf_t const *buf)
 {
-	uv_loop_t *loop = client->loop;
-	ecs_world_t *world = loop->data;
-
+	struct uv_tcp_ecs * c = (void*)client;
 	//ecs_trace("nread:%i, UV_EOF=%i\n", nread, UV_EOF);
 	//ecs_trace("buf: %p %lli", buf->base, buf->len);
 	if (nread < 0)
@@ -93,12 +80,8 @@ void echo_read(uv_stream_t *client, ssize_t nread, uv_buf_t const *buf)
 	}
 	else if (nread > 0)
 	{
-		printf("\n======================\n%*s\n", nread, buf->base);
-		//ecs_entity_t e = ecs_new(world, uv_buf_t);
-		//ecs_set(world, e, uv_buf_t, {nread, buf->base});
-		//uv_write_t *req = (uv_write_t *) malloc(sizeof(uv_write_t));
-		//uv_buf_t wrbuf = uv_buf_init(buf->base, nread);
-		//uv_write(req, client, &wrbuf, 1, echo_write);
+		printf("\n======================\n%.*s\n", nread, buf->base);
+		c->buf.head += nread;
 	}
 }
 
@@ -121,12 +104,12 @@ void on_new_connection(uv_stream_t *server, int status)
 
 
 	struct uv_tcp_ecs * client = ecs_os_calloc_t(struct uv_tcp_ecs);
+	circular_buf_init(&client->buf);
 	uv_tcp_init (loop, (uv_tcp_t*) client);
 	if (uv_accept(server, (uv_stream_t*) client) == 0)
 	{
 		client->world = world;
 		client->entity = ecs_new(world, 0);
-		//ecs_set_name(world, client->entity, "HEJ");
 		struct sockaddr_storage addr = { 0 };
 		int alen = sizeof(addr);
 		int r = uv_tcp_getpeername((uv_tcp_t*) client, (struct sockaddr *)&addr, &alen);
@@ -240,25 +223,10 @@ static void uv_buf_t_OnSet(ecs_iter_t *it)
 {
 	//ecs_trace("FLECSUV: sys_TestComponent");
 	UvTcp *tcp = ecs_term(it, UvTcp, 1); // Parent
-	uv_buf_t *buf = ecs_term(it, uv_buf_t, 2);
 	for (int i = 0; i < it->count; i ++)
 	{
-		ecs_trace("%*s", buf->len, buf->base);
-		ecs_delete(it->world, it->entities[i]);
-
-		uv_write_t *req = (uv_write_t *) malloc(sizeof(uv_write_t));
-		char text[] = "HTTP/1.1 200 OK\r\n\r\n";
-		uv_buf_t wrbuf = uv_buf_init(text, sizeof(text));
-		//uv_buf_t wrbuf = uv_buf_init(buf[i].base, buf[i].len);
-		uv_write(req, (uv_stream_t*)tcp[0].stream, &wrbuf, 1, echo_write);
-		//ecs_delete(it->world, it-)
-
-		//uv_write_t *req = (uv_write_t *) malloc(sizeof(uv_write_t));
-		//uv_buf_t wrbuf = uv_buf_init(buf->base, nread);
-		//uv_write(req, client, &wrbuf, 1, echo_write);
-
-		//printf("HTTP/1.1 200 OK\r\n\r\n");
-		//printf("HTTP/1.1 200 OK\r\n\r\n");
+		//ecs_trace("%*s", buf->len, buf->base);
+		//ecs_delete(it->world, it->entities[i]);
 	}
 }
 
@@ -277,42 +245,15 @@ static void uv_buf_t_OnSet(ecs_iter_t *it)
 void flecs_uv_init(ecs_world_t *world)
 {
 	ecs_trace("Init FLECS UV");
+	test_circular_buf();
+
 	ECS_COMPONENT_DEFINE(world, UvLoop);
-	ecs_set_component_actions(world, UvLoop, {
-	.ctor = ecs_ctor(UvLoop),
-	.dtor = ecs_dtor(UvLoop),
-	.copy = ecs_copy(UvLoop),
-	.move = ecs_move(UvLoop)
-	});
 	ECS_COMPONENT_DEFINE(world, UvTcp);
-	ecs_set_component_actions(world, UvTcp, {
-	.ctor = ecs_ctor(UvTcp),
-	.dtor = ecs_dtor(UvTcp),
-	.copy = ecs_copy(UvTcp),
-	.move = ecs_move(UvTcp)
-	});
-	ECS_COMPONENT_DEFINE(world, UvStream);
-	ecs_set_component_actions(world, UvStream, {
-	.ctor = ecs_ctor(UvStream),
-	.dtor = ecs_dtor(UvStream),
-	.copy = ecs_copy(UvStream),
-	.move = ecs_move(UvStream)
-	});
-	ECS_COMPONENT_DEFINE(world, uv_buf_t);
-	ecs_set_component_actions(world, uv_buf_t, {
-	.ctor = ecs_ctor(uv_buf_t),
-	.dtor = ecs_dtor(uv_buf_t),
-	.copy = ecs_copy(uv_buf_t),
-	.move = ecs_move(uv_buf_t),
-	.on_set = ecs_on_set(uv_buf_t)
-	});
-	ecs_struct_init(world, &(ecs_struct_desc_t) {
-	.entity.entity = ecs_id(uv_buf_t),
-	.members = {
-	{ .name = "len", .type = ecs_id(ecs_i64_t) },
-	{ .name = "base", .type = ecs_id(ecs_uptr_t) }
-	}
-	});
+	ECS_COMPONENT_DEFINE(world, UvUdp);
+
+	ecs_set_component_actions(world, UvLoop, {.ctor = ecs_ctor(UvLoop),.dtor = ecs_dtor(UvLoop),.copy = ecs_copy(UvLoop),.move = ecs_move(UvLoop)});
+	ecs_set_component_actions(world, UvTcp, {.ctor = ecs_ctor(UvTcp),.dtor = ecs_dtor(UvTcp),.copy = ecs_copy(UvTcp),.move = ecs_move(UvTcp)});
+	ecs_set_component_actions(world, UvUdp, {.ctor = ecs_ctor(UvUdp),.dtor = ecs_dtor(UvUdp),.copy = ecs_copy(UvUdp),.move = ecs_move(UvUdp)});
 
 	//ECS_COMPONENT_DEFINE(world, TestComponent);
 	//ECS_TAG_DEFINE(world, MyTag);

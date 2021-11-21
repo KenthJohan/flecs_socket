@@ -54,6 +54,15 @@ int main(int argc, char * argv[])
 		ecs_add_pair(world, e, EcsChildOf, loop);
 	}
 
+	{
+		ecs_entity_t e = ecs_new_entity(world, "My UDP Server");
+		ecs_set(world, e, IpAddr, {"0.0.0.0"});
+		ecs_set(world, e, Port, {7000});
+		ecs_add(world, e, sockaddr_storage);
+		ecs_add(world, e, UvUdp);
+		ecs_add_pair(world, e, EcsChildOf, loop);
+	}
+
 	/*
 	{
 		ecs_entity_t e = ecs_new_entity(world, "My TCP Server2");
@@ -67,7 +76,7 @@ int main(int argc, char * argv[])
 	while(1)
 	{
 		ecs_progress(world, 0.0f);
-		ecs_os_sleep(0, 1000*1000*100);
+		ecs_os_sleep(0, 1000*1000*100);//100ms sleep
 		//uv_run(loop, UV_RUN_NOWAIT);
 		//printf("main loop %i.\n", i++);
 	}

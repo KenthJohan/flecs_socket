@@ -1,91 +1,81 @@
+#include <inttypes.h>
 #include <stdio.h>
-#include <unistd.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 #include <uv.h>
-#include <flecs.h>
 
 uv_loop_t *loop;
-struct sockaddr_in addr;
+uv_process_t child_req;
+uv_process_options_t options;
 
-void alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
-	buf->base = (char*)malloc(suggested_size);
-	buf->len = suggested_size;
+void cleanup_handles(uv_process_t *req, int64_t exit_status, int term_signal) {
+	fprintf(stderr, "Process exited with status %" PRId64 ", signal %d\n", exit_status, term_signal);
+	uv_close((uv_handle_t*) req->data, NULL);
+	uv_close((uv_handle_t*) req, NULL);
 }
 
-void echo_write(uv_write_t *req, int status) {
-	if (status) {
-		fprintf(stderr, "Write error %s\n", uv_strerror(status));
-	}
-	free(req);
-}
+void invoke_cgi_script(uv_tcp_t *client) {
+	size_t size = 500;
+	char path[size];
+	uv_exepath(path, &size);
+	strcpy(path + (strlen(path) - strlen("cgi")), "tick");
 
-void echo_read(uv_stream_t *client, ssize_t nread, const uv_buf_t *buf) {
-	if (nread < 0) {
-		if (nread != UV_EOF) {
-			fprintf(stderr, "Read error %s\n", uv_err_name(nread));
-			uv_close((uv_handle_t*) client, NULL);
-		}
-	} else if (nread > 0) {
-		uv_write_t *req = (uv_write_t *) malloc(sizeof(uv_write_t));
-		uv_buf_t wrbuf = uv_buf_init(buf->base, nread);
-		uv_write(req, client, &wrbuf, 1, echo_write);
-	}
+	char* args[2];
+	args[0] = path;
+	args[1] = NULL;
 
-	if (buf->base) {
-		free(buf->base);
+	/* ... finding the executable path and setting up arguments ... */
+
+	options.stdio_count = 3;
+	uv_stdio_container_t child_stdio[3];
+	child_stdio[0].flags = UV_IGNORE;
+	child_stdio[1].flags = UV_INHERIT_STREAM;
+	child_stdio[1].data.stream = (uv_stream_t*) client;
+	child_stdio[2].flags = UV_IGNORE;
+	options.stdio = child_stdio;
+
+	options.exit_cb = cleanup_handles;
+	options.file = args[0];
+	options.args = args;
+
+	// Set this so we can close the socket after the child process exits.
+	child_req.data = (void*) client;
+	int r;
+	if ((r = uv_spawn(loop, &child_req, &options))) {
+		fprintf(stderr, "%s\n", uv_strerror(r));
+		return;
 	}
 }
 
 void on_new_connection(uv_stream_t *server, int status) {
-	if (status < 0) {
-		fprintf(stderr, "New connection error %s\n", uv_strerror(status));
+	if (status == -1) {
+		// error!
 		return;
 	}
 
-	uv_tcp_t *client = (uv_tcp_t*)malloc(sizeof(uv_tcp_t));
+	uv_tcp_t *client = (uv_tcp_t*) malloc(sizeof(uv_tcp_t));
 	uv_tcp_init(loop, client);
 	if (uv_accept(server, (uv_stream_t*) client) == 0) {
-		uv_read_start((uv_stream_t*)client, alloc_buffer, echo_read);
-	} else {
+		invoke_cgi_script(client);
+	}
+	else {
 		uv_close((uv_handle_t*) client, NULL);
 	}
 }
 
-
-void uvloop()
-{
-	static int i = 0;
-	uv_run(loop, UV_RUN_NOWAIT);
-	printf("main loop %i.\n", i+=2);
-}
-
-
-int main(int argc, char * argv[]) {
-	ecs_world_t *world = ecs_init_w_args(argc, argv);
+int main() {
 	loop = uv_default_loop();
 
 	uv_tcp_t server;
 	uv_tcp_init(loop, &server);
 
-	uv_ip4_addr("0.0.0.0", 7000, &addr);
-
-	uv_tcp_bind(&server, (const struct sockaddr*)&addr, 0);
-	int r = uv_listen((uv_stream_t*)&server, 128, on_new_connection);
+	struct sockaddr_in bind_addr;
+	uv_ip4_addr("0.0.0.0", 7000, &bind_addr);
+	uv_tcp_bind(&server, (const struct sockaddr *)&bind_addr, 0);
+	int r = uv_listen((uv_stream_t*) &server, 128, on_new_connection);
 	if (r) {
-		fprintf(stderr, "Listen error %s\n", uv_strerror(r));
+		fprintf(stderr, "Listen error %s\n", uv_err_name(r));
 		return 1;
 	}
-
-	ECS_COMPONENT(world, uv_loop_t);
-	ECS_SYSTEM(world, uvloop, EcsOnUpdate, uv_loop_t);
-	ecs_new(world, uv_loop_t);
-	while(1)
-	{
-		ecs_progress(world, 0.0f);
-		ecs_os_sleep(1, 0);
-		//uv_run(loop, UV_RUN_NOWAIT);
-	}
-
-	return 0;
+	return uv_run(loop, UV_RUN_DEFAULT);
 }

@@ -1,18 +1,20 @@
 #pragma once
 #include <flecs.h>
 #include <uv.h>
-
-typedef struct
-{
-	int a;
-	int b;
-	int c;
-} TestComponent;
+#include "circularbuf.h"
 
 
 struct uv_tcp_ecs
 {
 	uv_tcp_t uvtcp;
+	ecs_world_t * world;
+	ecs_entity_t entity;
+	struct circular_buf buf;
+};
+
+struct uv_udp_ecs
+{
+	uv_udp_t uvtcp;
 	ecs_world_t * world;
 	ecs_entity_t entity;
 };
@@ -38,8 +40,8 @@ typedef struct
 
 typedef struct
 {
-	uv_stream_t * stream;
-} UvStream;
+	struct uv_udp_ecs * stream;
+} UvUdp;
 
 
 
@@ -50,9 +52,8 @@ typedef struct
 
 extern ECS_COMPONENT_DECLARE(UvLoop);
 extern ECS_COMPONENT_DECLARE(UvTcp);
+extern ECS_COMPONENT_DECLARE(UvUdp);
 extern ECS_COMPONENT_DECLARE(UvStream);
-extern ECS_COMPONENT_DECLARE(uv_buf_t);
-extern ECS_COMPONENT_DECLARE(TestComponent);
 
 //extern ECS_DECLARE(MyTag);
 
