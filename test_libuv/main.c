@@ -1,5 +1,6 @@
 // https://discord.com/channels/633826290415435777/633826290415435781/905405276071555092
 // https://sandermertens.github.io/query_explorer/?remote=true
+// https://www.flecs.dev/explorer/
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
