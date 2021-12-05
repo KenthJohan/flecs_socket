@@ -2,13 +2,6 @@
 #include "flecs.h"
 
 
-#undef ECS_META_IMPL
-#ifndef FLECS_COMPONENTS_SOCKET_IMPL
-#define ECS_META_IMPL EXTERN // Ensure meta symbols are only defined once
-#endif
-
-
-
 typedef struct
 {
 	ecs_u64_t fd;

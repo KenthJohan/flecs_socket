@@ -1,4 +1,3 @@
-#define FLECS_COMPONENTS_SOCKET_IMPL
 #include "flecs_socket.h"
 #include <WinSock2.h>
 #include <Ws2tcpip.h>
@@ -50,18 +49,21 @@ ecs_trace("EgAddress::ECS_COPY");
 ecs_os_strset(&dst->path, src->path);
 });
 
-
-void ecs_fd_printerror(char * filename, int line)
+#define WIN32_PRINT_ERROR() win32_print_error(__FILE__, __LINE__)
+void win32_print_error(char * filename, int line)
 {
-	wchar_t buf[256];
-	DWORD e = GetLastError();
+	wchar_t lpBuffer[256];
+	DWORD dwMessageId = GetLastError();
+	LPCVOID lpSource = NULL;
 	DWORD dwFlags = FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS;
 	DWORD dwLanguageId = MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT);
-	FormatMessageW(dwFlags, NULL, e, dwLanguageId, buf, (sizeof(buf) / sizeof(wchar_t)), NULL);
-	printf("%s:%i: GetLastError: %S (%li)\n", filename, line, buf, e);
+	DWORD nSize = (sizeof(lpBuffer) / sizeof(wchar_t));
+	va_list *Arguments = NULL;
+	FormatMessageW(dwFlags, lpSource, dwMessageId, dwLanguageId, lpBuffer, nSize, Arguments);
+	printf("%s:%i: GetLastError: %S (%li)\n", filename, line, lpBuffer, dwMessageId);
 }
 
-#define ECS_FD_PRINTERROR() ecs_fd_printerror(__FILE__, __LINE__)
+
 void win32_sock_init()
 {
 	/* If on Windows, test if winsock needs to be initialized */
@@ -70,17 +72,15 @@ void win32_sock_init()
 	{
 		WSADATA data = { 0 };
 		int rv = WSAStartup(MAKEWORD(2, 2), &data);
-		if (rv){ECS_FD_PRINTERROR();goto error;}
+		if (rv){WIN32_PRINT_ERROR();goto error;}
 	}
 	else
 	{
 		int rv;
 		rv = closesocket(testsocket);
-		if (rv){ECS_FD_PRINTERROR();goto error;}
+		if (rv){WIN32_PRINT_ERROR();goto error;}
 		rv = shutdown(testsocket, SD_BOTH);
-		if (rv){ECS_FD_PRINTERROR();goto error;}
-		rv = close(testsocket);
-		if (rv){ECS_FD_PRINTERROR();goto error;}
+		if (rv){WIN32_PRINT_ERROR();goto error;}
 	}
 	return;
 error:
