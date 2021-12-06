@@ -5,14 +5,28 @@
 typedef struct
 {
 	ecs_u64_t fd;
-} EgUdpSocket;
+} EgSocketUDP;
+
+typedef struct
+{
+	ecs_u64_t fd;
+} EgSocketTCP;
 
 typedef struct
 {
 	ecs_string_t path;
 } EgURL;
 
-extern ECS_COMPONENT_DECLARE(EgUdpSocket);
+typedef struct
+{
+	ecs_os_thread_t thread;
+	ecs_sparse_t *connections; /* sparse<http_connection_t> */
+} EgReceiver;
+
+// 0
+
+extern ECS_COMPONENT_DECLARE(EgSocketUDP);
+extern ECS_COMPONENT_DECLARE(EgSocketTCP);
 extern ECS_COMPONENT_DECLARE(EgURL);
 
 

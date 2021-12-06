@@ -7,6 +7,7 @@
 
 #include "flecs_socket.h"
 #include "flecs_geometry.h"
+#include "flecs_basic.h"
 
 void main_init()
 {
@@ -35,11 +36,14 @@ int main(int argc, char *argv[])
 
 	ECS_IMPORT(world, FlecsComponentsSocket);
 	ECS_IMPORT(world, FlecsComponentsGeometry);
+	ECS_IMPORT(world, FlecsComponentsBasic);
 
 	ecs_entity_t e1 = ecs_new(world, EgURL);
-	ecs_entity_t e2 = ecs_new(world, EgUdpSocket);
-	ecs_entity_t e3 = ecs_new(world, EgBuffer);
+	ecs_entity_t e2 = ecs_new(world, EgURL);
+	ecs_entity_t e4 = ecs_new(world, EgBuffer);
+	ecs_entity_t e6 = ecs_new(world, EgThread);
 	ecs_set(world, e1, EgURL, {"udp://localhost:3000"});
+	ecs_set(world, e2, EgURL, {"tcp://localhost:3000"});
 
 	return ecs_app_run(world, &(ecs_app_desc_t) {
 	.target_fps = 60, .enable_rest = true
