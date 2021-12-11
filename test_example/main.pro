@@ -12,12 +12,15 @@ QMAKE_CFLAGS += -Wno-missing-field-initializers
 
 SOURCES += main.c
 SOURCES += flecs.c
-SOURCES += flecs_socket_mingw32.c
-SOURCES += flecs_geometry.c
-SOURCES += flecs_basic.c
+SOURCES += eg_socket_mingw32.c
+SOURCES += eg_geometry.c
+SOURCES += eg_basic.c
+SOURCES += eg_thread.c
 
-HEADERS += flecs_socket.h
-HEADERS += flecs_geometry.h
-HEADERS += flecs_basic.h
+HEADERS += eg_socket.h
+HEADERS += eg_geometry.h
+HEADERS += eg_basic.h
+HEADERS += eg_thread.h
+
 
 LIBS += -lmingw32 -lws2_32

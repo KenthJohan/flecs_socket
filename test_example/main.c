@@ -5,9 +5,10 @@
 #include <unistd.h>
 #include <flecs.h>
 
-#include "flecs_socket.h"
-#include "flecs_geometry.h"
-#include "flecs_basic.h"
+#include "eg_basic.h"
+#include "eg_thread.h"
+#include "eg_socket.h"
+#include "eg_geometry.h"
 
 void main_init()
 {
@@ -34,16 +35,26 @@ int main(int argc, char *argv[])
 	ecs_log_set_level(0);
 
 
+	ECS_IMPORT(world, FlecsComponentsBasic);
+	ECS_IMPORT(world, FlecsComponentsThread);
 	ECS_IMPORT(world, FlecsComponentsSocket);
 	ECS_IMPORT(world, FlecsComponentsGeometry);
-	ECS_IMPORT(world, FlecsComponentsBasic);
+
+	{
+		ecs_id_t i1 = ecs_id(EgURL);
+		ecs_id_t i2 = ecs_id(EgURL);
+		ecs_id_t i3 = ecs_id(EgBuffer);
+		//ecs_id_t i4 = ecs_id(EgThread);
+	}
 
 	ecs_entity_t e1 = ecs_new(world, EgURL);
 	ecs_entity_t e2 = ecs_new(world, EgURL);
 	ecs_entity_t e4 = ecs_new(world, EgBuffer);
-	ecs_entity_t e6 = ecs_new(world, EgThread);
+	//ecs_entity_t e6 = ecs_new(world, EgThread);
+	ecs_add(world, e1, EgThread);
 	ecs_set(world, e1, EgURL, {"udp://localhost:3000"});
 	ecs_set(world, e2, EgURL, {"tcp://localhost:3000"});
+
 
 	return ecs_app_run(world, &(ecs_app_desc_t) {
 	.target_fps = 60, .enable_rest = true

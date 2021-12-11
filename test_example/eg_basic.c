@@ -1,7 +1,6 @@
-#include "flecs_basic.h"
+#include "eg_basic.h"
 
 
-ECS_COMPONENT_DECLARE(EgThread);
 ECS_COMPONENT_DECLARE(EgBuffer);
 
 
@@ -30,9 +29,15 @@ src->size = 0;
 ECS_COPY(EgBuffer, dst, src, {
 ecs_trace("EgBuffer::ECS_COPY");
 if(dst->memory){ecs_os_free(dst->memory);}
-ecs_os_memcpy(dst->memory, src->memory, src->memory);
+ecs_os_memcpy(dst->memory, src->memory, src->size);
 dst->size = src->size;
 });
+
+
+
+
+
+
 
 
 
@@ -42,10 +47,8 @@ void FlecsComponentsBasicImport(ecs_world_t *world)
 {
 	ECS_MODULE(world, FlecsComponentsBasic);
 	ECS_COMPONENT_DEFINE(world, EgBuffer);
-	ECS_COMPONENT_DEFINE(world, EgThread);
 
 	ecs_set_name_prefix(world, "Eg");
-
 
 	ecs_set_component_actions(world, EgBuffer, {
 	.ctor = ecs_ctor(EgBuffer),
@@ -53,6 +56,7 @@ void FlecsComponentsBasicImport(ecs_world_t *world)
 	.copy = ecs_copy(EgBuffer),
 	.move = ecs_move(EgBuffer),
 	});
+
 
 	ecs_struct_init(world, &(ecs_struct_desc_t) {
 	.entity.entity = ecs_id(EgBuffer),

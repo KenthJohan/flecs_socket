@@ -1,4 +1,4 @@
-#include "flecs_geometry.h"
+#include "eg_geometry.h"
 
 
 ECS_COMPONENT_DECLARE(EgRectangle);

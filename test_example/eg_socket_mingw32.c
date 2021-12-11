@@ -1,8 +1,10 @@
-#include "flecs_socket.h"
+#include "eg_socket.h"
 #include <WinSock2.h>
 #include <Ws2tcpip.h>
 #include <Windows.h>
 
+#include "eg_basic.h"
+#include "eg_thread.h"
 
 ECS_COMPONENT_DECLARE(EgSocketUDP);
 ECS_COMPONENT_DECLARE(EgSocketTCP);
@@ -50,6 +52,47 @@ ecs_trace("EgAddress::ECS_COPY");
 ecs_os_strset(&dst->path, src->path);
 });
 
+
+// |e|e|
+// 0 : entity1, c
+// 1 : entity2,
+// 2 : entity3,
+// 3 : entity4,
+// | 1 | 1  | 500 bytes
+// | e | c | payload
+
+
+void parse_package(ecs_world_t * world, ecs_entity_t ev[256], ecs_entity_t cv[256], uint8_t msg[], ecs_size_t size)
+{
+	while(size >= 2)
+	{
+		uint8_t ie = msg[0]; // Indirect entity
+		uint8_t ic = msg[1]; // Indirect component
+		msg += 2; // Goto payload
+		size -= 2;
+		ecs_entity_t e = ev[ie]; // Get entity
+		ecs_entity_t c = cv[ic];
+		const EcsComponent * comp = ecs_get(world, c, EcsComponent);
+		if (comp)
+		{
+			ecs_warn("Component %016jx not found", c);
+			exit(1);
+		}
+		if (size < comp->size)
+		{
+			ecs_warn("Msg size %i is less than component size %i", size, comp->size);
+			exit(1);
+		}
+		ecs_set_id(world, e, c, comp->size, msg);
+		msg += comp->size;
+	}
+}
+
+
+
+
+
+
 #define WIN32_PRINT_ERROR() win32_print_error(__FILE__, __LINE__)
 void win32_print_error(char * filename, int line)
 {
@@ -96,44 +139,21 @@ void url_split(const char *url, char * proto, char * addr, unsigned * port)
 }
 
 
-void EgURLTrigger(ecs_iter_t *it)
-{
-	EgURL *a = ecs_term(it, EgURL, 1);
-	for (int i = 0; i < it->count; i ++)
-	{
-		char proto[10] = {0};
-		char addr[INET6_ADDRSTRLEN] = {0};
-		unsigned port = 0;
-		url_split(a->path, proto, addr, &port);
-		ecs_trace("proto:%s, addr:%s, port:%i", proto, addr, port);
-		if (ecs_os_strcmp(proto, "udp") == 0)
-		{
-			ecs_add(it->world, it->entities[i], EgSocketUDP);
-		}
-		if (ecs_os_strcmp(proto, "tcp") == 0)
-		{
-			ecs_add(it->world, it->entities[i], EgSocketTCP);
-		}
-	}
-}
-
-
-void EgCreateUDPSocket(ecs_iter_t *it)
-{
-	EgURL *a = ecs_term(it, EgURL, 1);
-	EgSocketUDP *s = ecs_term(it, EgSocketUDP, 2);
-	for (int i = 0; i < it->count; i ++)
-	{
-		SOCKET s1 = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-		s[i].fd = s1;
-	}
-}
-
-
 
 #define BUFLEN 100
-void * the_thread(void * arg)
+void * the_thread(eg_callback_arg_t * arg)
 {
+	while(1)
+	{
+		EgThread const * t = ecs_get(arg->world, arg->entity, EgThread);
+		if (t->state == 0)
+		{
+			return NULL;
+		};
+		ecs_sleepf(1.0f);
+		ecs_trace("Hello");
+	}
+
 	//ecs_os_thread_t thread = ecs_os_thread_new(http_server_thread, srv);
 	SOCKET s;
 	char buf[BUFLEN];
@@ -163,6 +183,54 @@ void * the_thread(void * arg)
 	}
 
 }
+
+
+
+
+
+
+
+void EgURLTrigger(ecs_iter_t *it)
+{
+	EgURL *a = ecs_term(it, EgURL, 1);
+	for (int i = 0; i < it->count; i ++)
+	{
+		char proto[10] = {0};
+		char addr[INET6_ADDRSTRLEN] = {0};
+		unsigned port = 0;
+		url_split(a->path, proto, addr, &port);
+		ecs_trace("proto:%s, addr:%s, port:%i", proto, addr, port);
+		if (ecs_os_strcmp(proto, "udp") == 0)
+		{
+			ecs_add(it->world, it->entities[i], EgSocketUDP);
+			eg_thread_start(it->world, it->entities[i], the_thread);
+		}
+		if (ecs_os_strcmp(proto, "tcp") == 0)
+		{
+			ecs_add(it->world, it->entities[i], EgSocketTCP);
+		}
+	}
+}
+
+
+void EgCreateUDPSocket(ecs_iter_t *it)
+{
+	EgURL *a = ecs_term(it, EgURL, 1);
+	EgSocketUDP *s = ecs_term(it, EgSocketUDP, 2);
+	for (int i = 0; i < it->count; i ++)
+	{
+		SOCKET s1 = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+		s[i].fd = s1;
+	}
+}
+
+
+
+
+
+
+
+
 
 
 
@@ -200,6 +268,13 @@ void FlecsComponentsSocketImport(ecs_world_t *world)
 	});
 
 	ecs_struct_init(world, &(ecs_struct_desc_t) {
+	.entity.entity = ecs_id(EgSocketTCP), // Make sure to use existing id
+	.members = {
+	{ .name = "fd", .type = ecs_id(ecs_u64_t) }
+	}
+	});
+
+	ecs_struct_init(world, &(ecs_struct_desc_t) {
 	.entity.entity = ecs_id(EgURL), // Make sure to use existing id
 	.members = {
 	{ .name = "path", .type = ecs_id(ecs_string_t) }
@@ -210,6 +285,7 @@ void FlecsComponentsSocketImport(ecs_world_t *world)
 
 	ECS_TRIGGER(world, EgURLTrigger, EcsOnSet, EgURL);
 	ECS_OBSERVER(world, EgCreateUDPSocket, EcsOnAdd, EgURL, EgSocketUDP);
+
 
 
 
