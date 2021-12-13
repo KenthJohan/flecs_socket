@@ -20,13 +20,18 @@ ptr->fd = INVALID_SOCKET;
 
 ECS_DTOR(EgSocketUDP, ptr, {
 ecs_trace("EgUdpSocket::ECS_DTOR");
-if (ptr->fd != INVALID_SOCKET)
-{
-closesocket(ptr->fd);
-}
+if (ptr->fd != INVALID_SOCKET){closesocket(ptr->fd);}
 });
 
+ECS_CTOR(EgSocketTCP, ptr, {
+ecs_trace("EgSocketTCP::ECS_CTOR");
+ptr->fd = INVALID_SOCKET;
+});
 
+ECS_DTOR(EgSocketTCP, ptr, {
+ecs_trace("EgSocketTCP::ECS_DTOR");
+if (ptr->fd != INVALID_SOCKET){closesocket(ptr->fd);}
+});
 
 ECS_CTOR(EgURL, ptr, {
 ecs_trace("EgAddress::ECS_CTOR");
@@ -53,40 +58,7 @@ ecs_os_strset(&dst->path, src->path);
 });
 
 
-// |e|e|
-// 0 : entity1, c
-// 1 : entity2,
-// 2 : entity3,
-// 3 : entity4,
-// | 1 | 1  | 500 bytes
-// | e | c | payload
 
-
-void parse_package(ecs_world_t * world, ecs_entity_t ev[256], ecs_entity_t cv[256], uint8_t msg[], ecs_size_t size)
-{
-	while(size >= 2)
-	{
-		uint8_t ie = msg[0]; // Indirect entity
-		uint8_t ic = msg[1]; // Indirect component
-		msg += 2; // Goto payload
-		size -= 2;
-		ecs_entity_t e = ev[ie]; // Get entity
-		ecs_entity_t c = cv[ic];
-		const EcsComponent * comp = ecs_get(world, c, EcsComponent);
-		if (comp)
-		{
-			ecs_warn("Component %016jx not found", c);
-			exit(1);
-		}
-		if (size < comp->size)
-		{
-			ecs_warn("Msg size %i is less than component size %i", size, comp->size);
-			exit(1);
-		}
-		ecs_set_id(world, e, c, comp->size, msg);
-		msg += comp->size;
-	}
-}
 
 
 
@@ -140,49 +112,7 @@ void url_split(const char *url, char * proto, char * addr, unsigned * port)
 
 
 
-#define BUFLEN 100
-void * the_thread(eg_callback_arg_t * arg)
-{
-	while(1)
-	{
-		EgThread const * t = ecs_get(arg->world, arg->entity, EgThread);
-		if (t->state == 0)
-		{
-			return NULL;
-		};
-		ecs_sleepf(1.0f);
-		ecs_trace("Hello");
-	}
 
-	//ecs_os_thread_t thread = ecs_os_thread_new(http_server_thread, srv);
-	SOCKET s;
-	char buf[BUFLEN];
-	int recv_len;
-	int slen;
-	struct sockaddr_in si_other;
-	while(1)
-	{
-		printf("Waiting for data...");
-		fflush(stdout);
-
-		//try to receive some data, this is a blocking call
-		if ((recv_len = recvfrom(s, buf, BUFLEN, 0, (struct sockaddr *) &si_other, &slen)) == -1)
-		{
-			ecs_fatal("recvfrom()");
-		}
-
-		//print details of the client/peer and the data received
-		printf("Received packet from %s:%d\n", inet_ntoa(si_other.sin_addr), ntohs(si_other.sin_port));
-		printf("Data: %s\n" , buf);
-
-		//now reply the client with the same data
-		if (sendto(s, buf, recv_len, 0, (struct sockaddr*) &si_other, slen) == -1)
-		{
-			ecs_fatal("sendto()");
-		}
-	}
-
-}
 
 
 
@@ -203,7 +133,6 @@ void EgURLTrigger(ecs_iter_t *it)
 		if (ecs_os_strcmp(proto, "udp") == 0)
 		{
 			ecs_add(it->world, it->entities[i], EgSocketUDP);
-			eg_thread_start(it->world, it->entities[i], the_thread);
 		}
 		if (ecs_os_strcmp(proto, "tcp") == 0)
 		{
@@ -215,14 +144,25 @@ void EgURLTrigger(ecs_iter_t *it)
 
 void EgCreateUDPSocket(ecs_iter_t *it)
 {
-	EgURL *a = ecs_term(it, EgURL, 1);
-	EgSocketUDP *s = ecs_term(it, EgSocketUDP, 2);
+	EgSocketUDP *s = ecs_term(it, EgSocketUDP, 1);
 	for (int i = 0; i < it->count; i ++)
 	{
 		SOCKET s1 = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 		s[i].fd = s1;
 	}
 }
+
+void EgCreateTCPSocket(ecs_iter_t *it)
+{
+	EgSocketTCP *s = ecs_term(it, EgSocketTCP, 1);
+	for (int i = 0; i < it->count; i ++)
+	{
+		SOCKET s1 = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+		s[i].fd = s1;
+	}
+}
+
+
 
 
 
@@ -261,21 +201,21 @@ void FlecsComponentsSocketImport(ecs_world_t *world)
 
 
 	ecs_struct_init(world, &(ecs_struct_desc_t) {
-	.entity.entity = ecs_id(EgSocketUDP), // Make sure to use existing id
+	.entity.entity = ecs_id(EgSocketUDP),
 	.members = {
 	{ .name = "fd", .type = ecs_id(ecs_u64_t) }
 	}
 	});
 
 	ecs_struct_init(world, &(ecs_struct_desc_t) {
-	.entity.entity = ecs_id(EgSocketTCP), // Make sure to use existing id
+	.entity.entity = ecs_id(EgSocketTCP),
 	.members = {
 	{ .name = "fd", .type = ecs_id(ecs_u64_t) }
 	}
 	});
 
 	ecs_struct_init(world, &(ecs_struct_desc_t) {
-	.entity.entity = ecs_id(EgURL), // Make sure to use existing id
+	.entity.entity = ecs_id(EgURL),
 	.members = {
 	{ .name = "path", .type = ecs_id(ecs_string_t) }
 	}
@@ -284,7 +224,11 @@ void FlecsComponentsSocketImport(ecs_world_t *world)
 
 
 	ECS_TRIGGER(world, EgURLTrigger, EcsOnSet, EgURL);
-	ECS_OBSERVER(world, EgCreateUDPSocket, EcsOnAdd, EgURL, EgSocketUDP);
+	ECS_TRIGGER(world, EgCreateUDPSocket, EcsOnSet, EgSocketUDP);
+	ECS_TRIGGER(world, EgCreateTCPSocket, EcsOnSet, EgSocketTCP);
+
+
+
 
 
 

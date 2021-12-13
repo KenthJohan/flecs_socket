@@ -16,11 +16,13 @@ SOURCES += eg_socket_mingw32.c
 SOURCES += eg_geometry.c
 SOURCES += eg_basic.c
 SOURCES += eg_thread.c
+SOURCES += eg_net.c
 
 HEADERS += eg_socket.h
 HEADERS += eg_geometry.h
 HEADERS += eg_basic.h
 HEADERS += eg_thread.h
+HEADERS += eg_net.h
 
 
 LIBS += -lmingw32 -lws2_32
