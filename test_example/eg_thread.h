@@ -4,8 +4,8 @@
 enum eg_thread_state_t
 {
 	eg_thread_status_undefined, //Controlled by outside
-	eg_thread_status_standby, //Controlled by thread or outside
 	eg_thread_status_empty,
+	eg_thread_status_standby, //Controlled by thread or outside
 	eg_thread_status_starting, //Controlled by outside
 	eg_thread_status_running, //Controlled by thread
 	eg_thread_status_stopping //Controlled by outside

@@ -57,11 +57,11 @@ int main(int argc, char *argv[])
 	{
 		ecs_entity_t e = ecs_new(world, 0);
 		ecs_set(world, e, EgURL, {"udp://localhost:3000"});
-		ecs_add(world, e, EgThread);
+		ecs_set(world, e, EgThread, {0});
 		ecs_add(world, e, EgNetProtocol1);
+		//EgThread * tr = ecs_get_mut(world, e, EgThread, NULL);
+		//ecs_trace("TR: %p", tr);
 	}
-
-
 
 	return ecs_app_run(world, &(ecs_app_desc_t) {
 	.target_fps = 60, .enable_rest = true

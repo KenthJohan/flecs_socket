@@ -1,6 +1,7 @@
 #include "eg_net.h"
 #include "eg_thread.h"
 #include "eg_socket.h"
+#include "eg_basic.h"
 #include <WinSock2.h>
 #include <Ws2tcpip.h>
 #include <Windows.h>
@@ -47,9 +48,16 @@ void parse_package(ecs_world_t * world, ecs_entity_t ev[256], ecs_entity_t cv[25
 #define BUFLEN 100
 void * the_thread(eg_callback_arg_t * arg)
 {
+	//ecs_entity_t parent = ecs_new(arg->world, 0);
+	//ecs_entity_t prev_scope = ecs_set_scope(arg->world, parent);
 	ecs_bool_t is_added;
-	EgThread * t = ecs_get_mut(arg->world, arg->entity, EgThread, &is_added);
-	//eg_thread_action(t, eg_thread_status_running);
+	EgThread * abc = ecs_get_mut(arg->world, arg->entity, EgThread, &is_added);
+	eg_thread_action(abc, eg_thread_status_running);
+	//ecs_modified(arg->world, arg->entity, EgThread);
+	//ecs_set_scope(arg->world, prev_scope);
+
+	//ecs_add(arg->world, arg->entity, EgBuffer);
+
 	while(1)
 	{
 		if (arg->state == eg_thread_status_stopping)
@@ -103,6 +111,8 @@ void observer1(ecs_iter_t *it)
 	EgThread *t = ecs_term(it, EgThread, 3);
 	for (int i = 0; i < it->count; i ++)
 	{
+		//t[i].arg->world = it->world;
+		//t[i].arg->entity = it->entities[i];
 		eg_thread_set_callback(t + i, (ecs_os_thread_callback_t)the_thread);
 		eg_thread_action(t + i, eg_thread_status_starting);
 	}

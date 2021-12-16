@@ -29,13 +29,6 @@ void eg_thread_set_state_text(ecs_u32_t state, ecs_string_t * text)
 	}
 }
 
-ECS_CTOR(EgThread, ptr, {
-ecs_trace("EgThread::ECS_CTOR");
-ptr->arg = ecs_os_calloc(sizeof(eg_callback_arg_t));
-ptr->arg->state = eg_thread_status_undefined;
-ptr->debug_text = NULL;
-eg_thread_set_state_text(ptr->arg->state, &ptr->debug_text);
-});
 
 ECS_DTOR(EgThread, ptr, {
 ecs_trace("EgThread::ECS_DTOR");
@@ -56,14 +49,44 @@ src->debug_text = NULL;
 })
 
 ECS_COPY(EgThread, dst, src, {
-ecs_trace("EgThread::ECS_COPY %p %s", dst->arg, src->debug_text);
-//ecs_os_memcpy(dst->arg, src->arg, sizeof(eg_callback_arg_t));
-//*dst->arg = *src->arg;
-//dst->debug_text = NULL;
-//ecs_os_strset((char**)&dst->debug_text, src->debug_text);
+ecs_trace("EgThread::ECS_COPY1 %p %p : %p %p", dst, dst->arg, src, src->arg);
+if(src->arg)
+{
+ecs_os_free(dst->arg);
+dst->arg = ecs_os_calloc_t(eg_callback_arg_t);
+ecs_os_memcpy_t(dst->arg, src->arg, eg_callback_arg_t);
+ecs_trace("EgThread::ECS_COPY2 %p %p : %p %p", dst, dst->arg, src, src->arg);
+}
+ecs_os_strset((char**)&dst->debug_text, src->debug_text);
+
 });
 
 
+
+static
+void EgThread_onset(
+ecs_world_t *world,
+ecs_entity_t component,
+const ecs_entity_t *entities,
+void *ptr,
+size_t size,
+int32_t count,
+void *ctx)
+{
+	EgThread *th = ptr;
+	(void)component;
+	(void)size;
+	(void)ctx;
+	int i;
+	for(i = 0; i < count; i ++)
+	{
+		ecs_trace("EgThread_onset %i", i);
+		th[i].arg = ecs_os_calloc_t(eg_callback_arg_t);
+		th[i].arg->world = world;
+		th[i].arg->entity = entities[i];
+		eg_thread_action(th + i, eg_thread_status_empty);
+	}
+}
 
 
 
@@ -80,6 +103,8 @@ void eg_thread_set_callback(EgThread * t, ecs_os_thread_callback_t callback)
 
 void eg_thread_action(EgThread * t, uint32_t state)
 {
+	//ecs_world_t * world = t->arg->world;
+	//ecs_entity_t entity = t->arg->entity;
 	ecs_assert(t, ECS_INVALID_PARAMETER, NULL);
 	ecs_assert(t->arg, ECS_INVALID_PARAMETER, NULL);
 
@@ -108,22 +133,12 @@ void eg_thread_action(EgThread * t, uint32_t state)
 		t->arg->state = state;
 		break;
 	}
-
 	eg_thread_set_state_text(state, &t->debug_text);
+
 }
 
 
-void EgThread_trigger(ecs_iter_t *it)
-{
-	EgThread *t = ecs_term(it, EgThread, 1);
-	for (int i = 0; i < it->count; i ++)
-	{
-		ecs_assert(t->arg, ECS_INVALID_PARAMETER, NULL);
-		t->arg->world = it->world;
-		t->arg->entity = it->entities[i];
-		eg_thread_action(t + i, eg_thread_status_empty);
-	}
-}
+
 
 void FlecsComponentsThreadImport(ecs_world_t *world)
 {
@@ -133,10 +148,11 @@ void FlecsComponentsThreadImport(ecs_world_t *world)
 	ecs_set_name_prefix(world, "Eg");
 
 	ecs_set_component_actions(world, EgThread, {
-	.ctor = ecs_ctor(EgThread),
+	.ctor = ecs_default_ctor,
 	.dtor = ecs_dtor(EgThread),
 	.copy = ecs_copy(EgThread),
 	.move = ecs_move(EgThread),
+	.on_set = EgThread_onset
 	});
 
 	ecs_struct_init(world, &(ecs_struct_desc_t) {
@@ -146,8 +162,5 @@ void FlecsComponentsThreadImport(ecs_world_t *world)
 	{ .name = "arg", .type = ecs_id(ecs_uptr_t) }
 	}
 	});
-
-
-	ECS_TRIGGER(world, EgThread_trigger, EcsOnAdd, EgThread);
 
 }
