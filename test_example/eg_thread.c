@@ -31,7 +31,11 @@ void eg_thread_set_state_text(ecs_u32_t state, ecs_string_t * text)
 
 
 ECS_DTOR(EgThread, ptr, {
-ecs_trace("EgThread::ECS_DTOR");
+ecs_trace("EgThread::ECS_DTOR %p", ptr->arg);
+if(ptr->arg)
+{
+ecs_os_mutex_free(ptr->arg->lock);
+}
 ecs_os_free(ptr->arg);
 ecs_os_free(ptr->debug_text);
 ptr->arg = NULL;
@@ -49,14 +53,17 @@ src->debug_text = NULL;
 })
 
 ECS_COPY(EgThread, dst, src, {
-ecs_trace("EgThread::ECS_COPY1 %p %p : %p %p", dst, dst->arg, src, src->arg);
+ecs_trace("EgThread::ECS_COPY %p %p : %p %p", dst, dst->arg, src, src->arg);
 if(src->arg)
 {
+ecs_trace("EgThread::ECS_COPY free %p %p : %p %p", dst, dst->arg, src, src->arg);
 ecs_os_free(dst->arg);
+ecs_trace("EgThread::ECS_COPY calloc %p %p : %p %p", dst, dst->arg, src, src->arg);
 dst->arg = ecs_os_calloc_t(eg_callback_arg_t);
+ecs_trace("EgThread::ECS_COPY memcpy %p %p : %p %p", dst, dst->arg, src, src->arg);
 ecs_os_memcpy_t(dst->arg, src->arg, eg_callback_arg_t);
-ecs_trace("EgThread::ECS_COPY2 %p %p : %p %p", dst, dst->arg, src, src->arg);
 }
+ecs_trace("EgThread::ECS_COPY strset %p %p : %p %p", dst, dst->arg, src, src->arg);
 ecs_os_strset((char**)&dst->debug_text, src->debug_text);
 
 });
@@ -80,10 +87,12 @@ void *ctx)
 	int i;
 	for(i = 0; i < count; i ++)
 	{
-		ecs_trace("EgThread_onset %i", i);
 		th[i].arg = ecs_os_calloc_t(eg_callback_arg_t);
+		ecs_trace("EgThread_onset %i %p", i, th[i].arg);
+		th[i].arg->check = EG_CHECKVAL;
 		th[i].arg->world = world;
 		th[i].arg->entity = entities[i];
+		th[i].arg->lock = ecs_os_mutex_new();
 		eg_thread_action(th + i, eg_thread_status_empty);
 	}
 }
@@ -106,7 +115,8 @@ void eg_thread_action(EgThread * t, uint32_t state)
 	//ecs_world_t * world = t->arg->world;
 	//ecs_entity_t entity = t->arg->entity;
 	ecs_assert(t, ECS_INVALID_PARAMETER, NULL);
-	ecs_assert(t->arg, ECS_INVALID_PARAMETER, NULL);
+	ecs_assert(t->arg, ECS_INVALID_PARAMETER, "%u %p", state, t->arg);
+	ecs_assert(t->arg->check == EG_CHECKVAL, ECS_INVALID_PARAMETER, NULL);
 
 	switch (state)
 	{
@@ -120,16 +130,16 @@ void eg_thread_action(EgThread * t, uint32_t state)
 		t->arg->state = state;
 		break;
 	case eg_thread_status_starting:
-		ecs_assert((t->arg->state != state) && (t->arg->state == eg_thread_status_standby), ECS_INVALID_PARAMETER, NULL);
+		ecs_assert(t->arg->state == eg_thread_status_standby, ECS_INVALID_PARAMETER, NULL);
 		t->arg->state = state;
 		t->arg->thread = ecs_os_thread_new(t->arg->callback, t->arg);
 		break;
 	case eg_thread_status_running:
-		ecs_assert((t->arg->state != state) && (t->arg->state == eg_thread_status_starting), ECS_INVALID_PARAMETER, NULL);
+		ecs_assert(t->arg->state == eg_thread_status_starting, ECS_INVALID_PARAMETER, NULL);
 		t->arg->state = state;
 		break;
 	case eg_thread_status_stopping:
-		ecs_assert((t->arg->state != state) && (t->arg->state == eg_thread_status_running), ECS_INVALID_PARAMETER, NULL);
+		ecs_assert(t->arg->state == eg_thread_status_running, ECS_INVALID_PARAMETER, NULL);
 		t->arg->state = state;
 		break;
 	}

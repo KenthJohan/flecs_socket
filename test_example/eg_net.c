@@ -48,11 +48,18 @@ void parse_package(ecs_world_t * world, ecs_entity_t ev[256], ecs_entity_t cv[25
 #define BUFLEN 100
 void * the_thread(eg_callback_arg_t * arg)
 {
+	ecs_trace("ecs_os_mutex_lock1");
+	ecs_assert(arg->check == EG_CHECKVAL, ECS_INVALID_PARAMETER, NULL);
 	//ecs_entity_t parent = ecs_new(arg->world, 0);
 	//ecs_entity_t prev_scope = ecs_set_scope(arg->world, parent);
+	ecs_os_mutex_lock(arg->lock);
+	ecs_trace("ecs_os_mutex_lock2");
 	ecs_bool_t is_added;
 	EgThread * abc = ecs_get_mut(arg->world, arg->entity, EgThread, &is_added);
-	eg_thread_action(abc, eg_thread_status_running);
+	//eg_thread_action(abc, eg_thread_status_running);
+	//EgThread * abc = ecs_get(arg->world, arg->entity, EgThread);
+	//eg_thread_action(abc, eg_thread_status_running);
+	ecs_os_mutex_unlock(arg->lock);
 	//ecs_modified(arg->world, arg->entity, EgThread);
 	//ecs_set_scope(arg->world, prev_scope);
 
@@ -60,10 +67,7 @@ void * the_thread(eg_callback_arg_t * arg)
 
 	while(1)
 	{
-		if (arg->state == eg_thread_status_stopping)
-		{
-			break;
-		};
+		if (arg->state == eg_thread_status_stopping){break;}
 		ecs_sleepf(1.0f);
 		ecs_trace("Hello");
 	}
@@ -111,6 +115,7 @@ void observer1(ecs_iter_t *it)
 	EgThread *t = ecs_term(it, EgThread, 3);
 	for (int i = 0; i < it->count; i ++)
 	{
+		ecs_trace("EgNetProtocol1 %i %p", i, t[i].arg);
 		//t[i].arg->world = it->world;
 		//t[i].arg->entity = it->entities[i];
 		eg_thread_set_callback(t + i, (ecs_os_thread_callback_t)the_thread);

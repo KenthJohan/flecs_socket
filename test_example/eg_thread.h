@@ -1,6 +1,8 @@
 #pragma once
 #include "flecs.h"
 
+#define EG_CHECKVAL 0x12345678
+
 enum eg_thread_state_t
 {
 	eg_thread_status_undefined, //Controlled by outside
@@ -18,6 +20,8 @@ typedef struct
 	ecs_world_t * world;
 	ecs_entity_t entity;
 	ecs_os_thread_callback_t callback;
+	ecs_os_mutex_t lock;
+	ecs_u32_t check;
 } eg_callback_arg_t;
 
 typedef struct
