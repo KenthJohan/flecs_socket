@@ -18,7 +18,10 @@ typedef struct
 	ecs_string_t path;
 } EgURL;
 
-
+typedef struct
+{
+	ecs_byte_t storage[128];
+} EgAddress;
 
 
 typedef struct

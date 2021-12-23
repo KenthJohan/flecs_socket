@@ -51,6 +51,7 @@ void * the_thread(void * arg)
 	int slen;
 	struct sockaddr_in si_other;
 
+
 	we->state = EG_STATE_RUNNING;
 	while(we->action != EG_ACTION_STOP)
 	{
@@ -64,18 +65,15 @@ void * the_thread(void * arg)
 		if ((recv_len = recvfrom(s, buf, BUFLEN, 0, (struct sockaddr *) &si_other, &slen)) == -1)
 		{
 			WIN32_PRINT_ERROR("recvfrom");
-			//ecs_fatal("recvfrom(): %i", recv_len);
 		}
 
 		//print details of the client/peer and the data received
-		printf("Received packet from %s:%d\n", inet_ntoa(si_other.sin_addr), ntohs(si_other.sin_port));
-		printf("Data: %s\n" , buf);
+		ecs_trace("Received packet from %s:%d\n", inet_ntoa(si_other.sin_addr), ntohs(si_other.sin_port));
+		ecs_trace("Data: %s\n" , buf);
 
-		//now reply the client with the same data
 		if (sendto(s, buf, recv_len, 0, (struct sockaddr*) &si_other, slen) == -1)
 		{
 			WIN32_PRINT_ERROR("sendto");
-			//ecs_fatal("sendto()");
 		}
 	}
 

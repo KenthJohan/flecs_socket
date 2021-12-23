@@ -75,7 +75,7 @@ void win32_print_error(char * filename, int line, char const * fmt)
 	DWORD nSize = (sizeof(lpBuffer) / sizeof(wchar_t));
 	va_list *Arguments = NULL;
 	FormatMessageW(dwFlags, lpSource, dwMessageId, dwLanguageId, lpBuffer, nSize, Arguments);
-	printf("%s:%i: GetLastError: %S (%li): %s\n", filename, line, lpBuffer, dwMessageId, fmt);
+	ecs_trace("%s:%i: GetLastError: %S (%li): %s\n", filename, line, lpBuffer, dwMessageId, fmt);
 }
 
 
@@ -111,7 +111,18 @@ void url_split(const char *url, char * proto, char * addr, unsigned * port)
 
 
 
-
+int bind_address(int sockfd, char addr[INET6_ADDRSTRLEN], unsigned port)
+{
+	struct sockaddr_storage storage;
+	struct sockaddr_in * a = (void*)&storage;
+	memset(a, 0, sizeof(struct sockaddr_in));
+	a->sin_family = AF_INET;
+	a->sin_addr.s_addr = htonl(INADDR_ANY);
+	a->sin_port = htons((unsigned short)port);
+	int r = bind(sockfd, (struct sockaddr *)a, sizeof(struct sockaddr_in));
+	WIN32_PRINT_ERROR("bind");
+	return r;
+}
 
 
 
@@ -129,39 +140,20 @@ void EgURLTrigger(ecs_iter_t *it)
 		unsigned port = 0;
 		url_split(a->path, proto, addr, &port);
 		ecs_trace("proto:%s, addr:%s, port:%i", proto, addr, port);
+		SOCKET s = INVALID_SOCKET;
 		if (ecs_os_strcmp(proto, "udp") == 0)
 		{
-			ecs_add(it->world, it->entities[i], EgSocketUDP);
+			s = socket(AF_INET, SOCK_DGRAM, 0);
+			ecs_set(it->world, it->entities[i], EgSocketUDP, {s});
 		}
-		if (ecs_os_strcmp(proto, "tcp") == 0)
+		else if (ecs_os_strcmp(proto, "tcp") == 0)
 		{
-			ecs_add(it->world, it->entities[i], EgSocketTCP);
+			s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+			ecs_set(it->world, it->entities[i], EgSocketTCP, {s});
 		}
+		bind_address(s, addr, port);
 	}
 }
-
-
-void EgCreateUDPSocket(ecs_iter_t *it)
-{
-	EgSocketUDP *s = ecs_term(it, EgSocketUDP, 1);
-	for (int i = 0; i < it->count; i ++)
-	{
-		SOCKET s1 = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-		s[i].fd = s1;
-	}
-}
-
-void EgCreateTCPSocket(ecs_iter_t *it)
-{
-	EgSocketTCP *s = ecs_term(it, EgSocketTCP, 1);
-	for (int i = 0; i < it->count; i ++)
-	{
-		SOCKET s1 = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-		s[i].fd = s1;
-	}
-}
-
-
 
 
 
@@ -223,11 +215,6 @@ void FlecsComponentsSocketImport(ecs_world_t *world)
 
 
 	ECS_TRIGGER(world, EgURLTrigger, EcsOnSet, EgURL);
-	ECS_TRIGGER(world, EgCreateUDPSocket, EcsOnAdd, EgSocketUDP);
-	ECS_TRIGGER(world, EgCreateTCPSocket, EcsOnAdd, EgSocketTCP);
-
-
-
 
 
 
