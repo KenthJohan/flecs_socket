@@ -11,18 +11,14 @@ QMAKE_CFLAGS += -Wno-missing-braces
 QMAKE_CFLAGS += -Wno-missing-field-initializers
 
 SOURCES += main.c
-SOURCES += flecs.c
-SOURCES += eg_socket_mingw32.c
-SOURCES += eg_geometry.c
-SOURCES += eg_basic.c
-SOURCES += eg_net.c
-SOURCES += eg_log.c
+SOURCES += logck.c
+SOURCES += ck/src/ck_array.c
+SOURCES += ck/src/ck_barrier_centralized.c
 
-HEADERS += eg_socket.h
-HEADERS += eg_geometry.h
-HEADERS += eg_basic.h
-HEADERS += eg_net.h
-HEADERS += eg_log.h
+INCLUDEPATH += ck/include
+
+HEADERS += ck/include/**
+HEADERS += logck.h
 
 
 LIBS += -lmingw32 -lws2_32

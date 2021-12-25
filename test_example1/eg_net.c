@@ -55,8 +55,7 @@ void * the_thread(void * arg)
 	we->state = EG_STATE_RUNNING;
 	while(we->action != EG_ACTION_STOP)
 	{
-		printf("Waiting for data...");
-		fflush(stdout);
+		ecs_trace("Waiting for data...");
 
 
 		we->state = EG_STATE_PENDING;

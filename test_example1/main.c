@@ -9,6 +9,7 @@
 #include "eg_socket.h"
 #include "eg_geometry.h"
 #include "eg_net.h"
+#include "eg_log.h"
 
 void main_init()
 {
@@ -33,7 +34,10 @@ int main(int argc, char *argv[])
 	//ecs_set(world, EcsWorld, EcsRest, {0});
 
 	ecs_log_set_level(0);
+	ecs_world_t * w = eg_log_init();
 
+
+	/*
 
 	ECS_IMPORT(world, FlecsComponentsBasic);
 	ECS_IMPORT(world, FlecsComponentsSocket);
@@ -62,9 +66,20 @@ int main(int argc, char *argv[])
 		//EgThread * tr = ecs_get_mut(world, e, EgThread, NULL);
 		//ecs_trace("TR: %p", tr);
 	}
+	*/
 
+	/*
 	return ecs_app_run(world, &(ecs_app_desc_t) {
 	.target_fps = 60, .enable_rest = true
 	});
+	*/
+
+	ecs_trace("Testing %p", world);
+	while (1)
+	{
+		ecs_progress(world, 0);
+		ecs_progress(w, 0);
+	}
+
 	return 0;
 }
