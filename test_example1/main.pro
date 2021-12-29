@@ -17,12 +17,14 @@ SOURCES += eg_geometry.c
 SOURCES += eg_basic.c
 SOURCES += eg_net.c
 SOURCES += eg_log.c
+SOURCES += eg_thread.c
 
 HEADERS += eg_socket.h
 HEADERS += eg_geometry.h
 HEADERS += eg_basic.h
 HEADERS += eg_net.h
 HEADERS += eg_log.h
+HEADERS += eg_thread.h
 
 
 LIBS += -lmingw32 -lws2_32

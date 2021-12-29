@@ -8,8 +8,11 @@
 #include "eg_basic.h"
 #include "eg_socket.h"
 #include "eg_geometry.h"
-#include "eg_net.h"
+//#include "eg_net.h"
 #include "eg_log.h"
+#include "eg_thread.h"
+
+
 
 void main_init()
 {
@@ -27,22 +30,22 @@ void main_init()
 int main(int argc, char *argv[])
 {
 	main_init();
+	ecs_log_set_level(0);
 	//ecs_world_t * world = ecs_init_w_args(argc, argv);
 	ecs_world_t *world = ecs_init_w_args(1, (char*[]){
 	"rest_test", NULL // Application name, optional
 	});
-	//ecs_set(world, EcsWorld, EcsRest, {0});
 
-	ecs_log_set_level(0);
-	ecs_world_t * w = eg_log_init();
-
-
-	/*
 
 	ECS_IMPORT(world, FlecsComponentsBasic);
-	ECS_IMPORT(world, FlecsComponentsSocket);
-	ECS_IMPORT(world, FlecsComponentsGeometry);
-	ECS_IMPORT(world, FlecsComponentsNet);
+	ECS_IMPORT(world, FlecsComponentsEgThread);
+	//ECS_IMPORT(world, FlecsComponentsEgLog);
+	//ECS_IMPORT(world, FlecsComponentsBasic);
+	//ECS_IMPORT(world, FlecsComponentsSocket);
+	//ECS_IMPORT(world, FlecsComponentsGeometry);
+	//ECS_IMPORT(world, FlecsComponentsNet);
+
+	/*
 
 	{
 		//ecs_id_t i1 = ecs_id(EgURL);
@@ -55,14 +58,15 @@ int main(int argc, char *argv[])
 		//ecs_set(world, e2, EgURL, {"tcp://localhost:3000"});
 	}
 
+	*/
 
+	/*
 	{
 		ecs_entity_t e = ecs_new(world, 0);
 		ecs_set(world, e, EgURL, {"udp://localhost:3000"});
-		//ecs_set(world, e, EgSocketUDP, {"udp://localhost:3000"});
+		ecs_add(world, e, EgNetProtocol1);
 		ecs_set(world, e, EgState, {EG_STATE_INITIAL, NULL});
 		ecs_set(world, e, EgAction, {EG_ACTION_NOP, NULL});
-		ecs_add(world, e, EgNetProtocol1);
 		//EgThread * tr = ecs_get_mut(world, e, EgThread, NULL);
 		//ecs_trace("TR: %p", tr);
 	}
@@ -74,11 +78,11 @@ int main(int argc, char *argv[])
 	});
 	*/
 
-	ecs_trace("Testing %p", world);
+	//ecs_trace("Testing %p", world);
+	ecs_set(world, EcsWorld, EcsRest, {0});
 	while (1)
 	{
 		ecs_progress(world, 0);
-		ecs_progress(w, 0);
 	}
 
 	return 0;

@@ -42,8 +42,9 @@ void parse_package(ecs_world_t * world, ecs_entity_t ev[256], ecs_entity_t cv[25
 
 
 #define BUFLEN 100
-void * the_thread(void * arg)
+static void * the_thread(void * arg)
 {
+	ecs_trace("the_thread");
 	struct eg_we * we = arg;
 	SOCKET s = ecs_get(we->world, we->entity, EgSocketUDP)->fd;
 	char buf[BUFLEN];

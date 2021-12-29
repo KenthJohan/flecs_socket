@@ -13,32 +13,32 @@ ECS_COMPONENT_DECLARE(EgURL);
 
 
 ECS_CTOR(EgSocketUDP, ptr, {
-ecs_trace("EgUdpSocket::ECS_CTOR");
+//ecs_trace("EgUdpSocket::ECS_CTOR");
 ptr->fd = INVALID_SOCKET;
 });
 
 ECS_DTOR(EgSocketUDP, ptr, {
-ecs_trace("EgUdpSocket::ECS_DTOR");
+//ecs_trace("EgUdpSocket::ECS_DTOR");
 if (ptr->fd != INVALID_SOCKET){closesocket(ptr->fd);}
 });
 
 ECS_CTOR(EgSocketTCP, ptr, {
-ecs_trace("EgSocketTCP::ECS_CTOR");
+//ecs_trace("EgSocketTCP::ECS_CTOR");
 ptr->fd = INVALID_SOCKET;
 });
 
 ECS_DTOR(EgSocketTCP, ptr, {
-ecs_trace("EgSocketTCP::ECS_DTOR");
+//ecs_trace("EgSocketTCP::ECS_DTOR");
 if (ptr->fd != INVALID_SOCKET){closesocket(ptr->fd);}
 });
 
 ECS_CTOR(EgURL, ptr, {
-ecs_trace("EgAddress::ECS_CTOR");
+//ecs_trace("EgURL::ECS_CTOR");
 ptr->path = NULL;
 });
 
 ECS_DTOR(EgURL, ptr, {
-ecs_trace("EgAddress::ECS_DTOR");
+//ecs_trace("EgURL::ECS_DTOR");
 if(ptr->path)
 {
 ecs_os_free(ptr->path);
@@ -46,13 +46,13 @@ ecs_os_free(ptr->path);
 });
 
 ECS_MOVE(EgURL, dst, src, {
-ecs_trace("EgAddress::ECS_MOVE");
+//ecs_trace("EgURL::ECS_MOVE");
 dst->path = src->path;
 src->path = NULL;
 })
 
 ECS_COPY(EgURL, dst, src, {
-ecs_trace("EgAddress::ECS_COPY");
+//ecs_trace("EgURL::ECS_COPY");
 ecs_os_strset(&dst->path, src->path);
 });
 
@@ -75,7 +75,7 @@ void win32_print_error(char * filename, int line, char const * fmt)
 	DWORD nSize = (sizeof(lpBuffer) / sizeof(wchar_t));
 	va_list *Arguments = NULL;
 	FormatMessageW(dwFlags, lpSource, dwMessageId, dwLanguageId, lpBuffer, nSize, Arguments);
-	ecs_trace("%s:%i: GetLastError: %S (%li): %s\n", filename, line, lpBuffer, dwMessageId, fmt);
+	//ecs_trace("%s:%i: GetLastError: %S (%li): %s\n", filename, line, lpBuffer, dwMessageId, fmt);
 }
 
 
