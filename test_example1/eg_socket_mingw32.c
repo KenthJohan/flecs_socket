@@ -172,16 +172,12 @@ void FlecsComponentsSocketImport(ecs_world_t *world)
 	ECS_COMPONENT_DEFINE(world, EgSocketTCP);
 	ECS_COMPONENT_DEFINE(world, EgSocketUDP);
 	ECS_COMPONENT_DEFINE(world, EgURL);
-
-	ecs_trace("Hej");
 	ecs_set_name_prefix(world, "Eg");
-
 
 	ecs_set_component_actions(world, EgSocketUDP, {
 	.ctor = ecs_ctor(EgSocketUDP),
 	.dtor = ecs_dtor(EgSocketUDP),
 	});
-
 
 	ecs_set_component_actions(world, EgURL, {
 	.ctor = ecs_ctor(EgURL),
@@ -189,7 +185,6 @@ void FlecsComponentsSocketImport(ecs_world_t *world)
 	.copy = ecs_copy(EgURL),
 	.move = ecs_move(EgURL),
 	});
-
 
 	ecs_struct_init(world, &(ecs_struct_desc_t) {
 	.entity.entity = ecs_id(EgSocketUDP),
@@ -212,12 +207,7 @@ void FlecsComponentsSocketImport(ecs_world_t *world)
 	}
 	});
 
-
-
 	ECS_TRIGGER(world, EgURLTrigger, EcsOnSet, EgURL);
-
-
-
 
 }
 

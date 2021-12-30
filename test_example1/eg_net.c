@@ -60,14 +60,13 @@ static void * the_thread(void * arg)
 
 
 		we->state = EG_STATE_PENDING;
-		//try to receive some data, this is a blocking call
 		slen = sizeof(struct sockaddr_in);
-		if ((recv_len = recvfrom(s, buf, BUFLEN, 0, (struct sockaddr *) &si_other, &slen)) == -1)
+		recv_len = recvfrom(s, buf, BUFLEN, 0, (struct sockaddr *) &si_other, &slen);
+		if (recv_len == -1)
 		{
 			WIN32_PRINT_ERROR("recvfrom");
 		}
 
-		//print details of the client/peer and the data received
 		ecs_trace("Received packet from %s:%d\n", inet_ntoa(si_other.sin_addr), ntohs(si_other.sin_port));
 		ecs_trace("Data: %s\n" , buf);
 

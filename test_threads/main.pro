@@ -11,14 +11,14 @@ QMAKE_CFLAGS += -Wno-missing-braces
 QMAKE_CFLAGS += -Wno-missing-field-initializers
 
 SOURCES += main.c
-SOURCES += logck.c
+SOURCES += eg_cklog.c
 SOURCES += ck/src/ck_array.c
 SOURCES += ck/src/ck_barrier_centralized.c
 
 INCLUDEPATH += ck/include
 
 HEADERS += ck/include/**
-HEADERS += logck.h
+HEADERS += eg_cklog.h
 
 
 LIBS += -lmingw32 -lws2_32

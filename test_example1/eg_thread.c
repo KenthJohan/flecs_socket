@@ -15,7 +15,6 @@ static void * the_thread(void * arg)
 		ecs_trace("Hello");
 		ecs_entity_t e = ecs_new(async, 0);
 		ecs_set(async, e, EgState, {EG_STATE_INITIAL, NULL});
-
 	}
 }
 
