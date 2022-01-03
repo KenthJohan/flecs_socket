@@ -1,71 +1,12 @@
 #include "eg_log.h"
 
-
-ECS_COMPONENT_DECLARE(EgMsg);
-ECS_COMPONENT_DECLARE(EgLine);
-ECS_COMPONENT_DECLARE(EgPath);
-ECS_COMPONENT_DECLARE(EgLevel);
-ECS_DECLARE(EgInfo);
-ECS_DECLARE(EgWarning);
-ECS_DECLARE(EgError);
-ECS_DECLARE(EgFatal);
+#include <ck_ring.h>
+#include <ck_backoff.h>
 
 
 
 
-static ECS_COPY(EgMsg, dst, src, {
-//printf("EgMsg::ECS_COPY (%s) (%s)\n", dst->value, src->value);
-ecs_os_strset((char**)&dst->value, src->value);
-})
-
-static ECS_MOVE(EgMsg, dst, src, {
-//printf("EgMsg::ECS_MOVE (%s) (%s)\n", dst->value, src->value);
-ecs_os_free((char*)dst->value);
-dst->value = src->value;
-src->value = NULL;
-})
-
-static ECS_DTOR(EgMsg, ptr, {
-//printf("EgMsg::ECS_DTOR\n");
-ecs_os_free((char*)ptr->value);
-})
-
-
-static ECS_COPY(EgPath, dst, src, {
-//printf("EgPath::ECS_COPY (%s) (%s)\n", dst->value, src->value);
-ecs_os_strset((char**)&dst->value, src->value);
-})
-
-static ECS_MOVE(EgPath, dst, src, {
-//printf("EgPath::ECS_MOVE (%s) (%s)\n", dst->value, src->value);
-ecs_os_free((char*)dst->value);
-dst->value = src->value;
-src->value = NULL;
-})
-
-static ECS_DTOR(EgPath, ptr, {
-//printf("EgPath::ECS_DTOR\n");
-ecs_os_free((char*)ptr->value);
-})
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-char const * get_color(int level)
+static char const * get_color(int level)
 {
 	switch (level)
 	{
@@ -76,7 +17,7 @@ char const * get_color(int level)
 	default: return ECS_MAGENTA;
 	}
 }
-char const * get_text(int level)
+static char const * get_text(int level)
 {
 	switch (level)
 	{
@@ -88,142 +29,142 @@ char const * get_text(int level)
 	}
 }
 
-void EgPrint(ecs_iter_t *it)
+enum
 {
-	EgMsg *m = ecs_term(it, EgMsg, 1);
-	EgLine *l = ecs_term(it, EgLine, 2);
-	EgPath *p = ecs_term(it, EgPath, 3);
-	EgLevel *lvl = ecs_term(it, EgLevel, 4);
-	for (int i = 0; i < it->count; i ++)
-	{
-		int line = l[i].value;
-		int level = lvl[i].value;
-		char const * file = p[i].value;
-		char const * msg = m[i].value;
-		char const * color = get_color(level);
-		char const * text = get_text(level);
-		char indent[32] = {'\0'};
-		if (level >= 0)
-		{
-			if (ecs_os_api.log_indent_)
-			{
-				int i;
-				for (i = 0; i < ecs_os_api.log_indent_; i ++)
-				{
-					indent[i * 2] = '|';
-					indent[i * 2 + 1] = ' ';
-				}
-				indent[i * 2] = '\0';
-			}
-		}
-		if (level < 0)
-		{
-			fprintf(stdout, "%s%s"ECS_NORMAL": %s%s:%d: %s\n", color, text, indent, file, line, msg);
-		}
-		else
-		{
-			fprintf(stdout, "%s%s"ECS_NORMAL":%s %s\n", color, text, indent, msg);
-		}
-		ecs_delete(it->world, it->entities[i]);
-	}
-}
+	Q_FREE,
+	Q_STDIN,
+	Q_STDERR,
+	Q_COUNT
+};
+#define QN 64
+#define CAP 1024
+ck_ring_t ring[Q_COUNT];
+ck_ring_buffer_t * buffer[Q_COUNT];
+char * g_msg;
 
 
 
 
 
-ecs_world_t * g_world;
+
 
 static void eg_log_msg1(int32_t level, const char *file, int32_t line, const char *msg)
 {
-	printf("msg1: %s\n", msg);
+	char const * color = get_color(level);
+	char const * text = get_text(level);
+
+	bool rv;
+	intptr_t index;
+	printf("ringsize1: %i\n", ck_ring_size(ring+Q_FREE));
+	do
+	{
+		rv = ck_ring_dequeue_mpmc(ring+Q_FREE, buffer[Q_FREE], (void*)&index);
+	}
+	while(rv == false);
+	printf("ringsize2: %i\n", ck_ring_size(ring+Q_FREE));
+	char * buf = g_msg + CAP * index;
+	char indent[32] = {'\0'};
+	if (level >= 0)
+	{
+		if (ecs_os_api.log_indent_)
+		{
+			int i;
+			for (i = 0; i < ecs_os_api.log_indent_; i ++)
+			{
+				indent[i * 2] = '|';
+				indent[i * 2 + 1] = ' ';
+			}
+			indent[i * 2] = '\0';
+		}
+	}
+
+	int q;
+	if (level < 0)
+	{
+		snprintf(buf, 1024, "%s%s"ECS_NORMAL": %s%s:%d: %s", color, text, indent, file, line, msg);
+		q = Q_STDERR;
+	}
+	else
+	{
+		snprintf(buf, 1024, "%s%s"ECS_NORMAL":%s %s", color, text, indent, msg);
+		q = Q_STDIN;
+	}
+
+	rv = ck_ring_enqueue_mpmc(ring+q, buffer[q], (void*)index);
+	printf("rv: %i %i\n", rv, index);
 }
 
 
-static void eg_log_msg(int32_t level, const char *file, int32_t line, const char *msg)
+static void * thread1(void *arg)
 {
-	ecs_os_api_log_t logold = ecs_os_api.log_;
-	ecs_os_api.log_ = eg_log_msg1;
+	bool rv1;
+	bool rv2;
+	while(1)
+	{
+		ecs_os_sleep(1,0);
+		intptr_t index1;
+		intptr_t index2;
+		rv1 = ck_ring_dequeue_mpmc(ring+Q_STDIN, buffer[Q_STDIN], (void*)&index1);
+		rv2 = ck_ring_dequeue_mpmc(ring+Q_STDERR, buffer[Q_STDERR], (void*)&index2);
 
-	//ecs_strbuf_t b = ECS_STRBUF_INIT;
-	//ecs_entity_t e = ecs_new_id(w);
-	//ecs_set(w, e, EgLevel, {level});
-	/*
-	ecs_set(g_world, e, EgLine, {line});
-	ecs_set(g_world, e, EgPath, {file});
-	ecs_set(g_world, e, EgMsg, {msg});
-	if(level >= 0)
-	{
-		ecs_add(g_world, e, EgInfo);
-	}
-	else if (level == -2)
-	{
-		ecs_add(g_world, e, EgWarning);
-	}
-	else if (level == -3)
-	{
-		ecs_add(g_world, e, EgError);
-	}
-	else if (level == -4)
-	{
-		ecs_add(g_world, e, EgFatal);
-	}
-	*/
+		if(rv1)
+		{
+			char * buf = g_msg + CAP * index1;
+			printf("thread1: %s\n", buf);
+		}
+		if(rv2)
+		{
+			char * buf = g_msg + CAP * index2;
+			printf("thread1: %s\n", buf);
+		}
+
+		if (rv1)
+		{
+			do
+			{
+				rv1 = ck_ring_enqueue_mpmc(ring+Q_FREE, buffer[Q_FREE], (void*)index1);
+			}
+			while(rv1 == false);
+		}
+
+		if (rv2)
+		{
+			do
+			{
+				rv2 = ck_ring_enqueue_mpmc(ring+Q_FREE, buffer[Q_FREE], (void*)index2);
+			}
+			while(rv2 == false);
+		}
 
 
-	ecs_os_api.log_ = logold;
+	}
 }
-
-
-/*
-void * the_thread1(void * arg)
-{
-	while (ecs_progress(world, 0))
-	{
-
-	}
-}
-*/
 
 void FlecsComponentsEgLogImport(ecs_world_t *world)
 {
 	ECS_MODULE(world, FlecsComponentsEgLog);
 	ecs_set_name_prefix(world, "Eg");
-	g_world = world;
-
-
-	ECS_COMPONENT_DEFINE(world, EgMsg);
-	ECS_COMPONENT_DEFINE(world, EgLine);
-	ECS_COMPONENT_DEFINE(world, EgPath);
-	ECS_COMPONENT_DEFINE(world, EgLevel);
-	ECS_TAG_DEFINE(world, EgInfo);
-	ECS_TAG_DEFINE(world, EgWarning);
-	ECS_TAG_DEFINE(world, EgError);
-	ECS_TAG_DEFINE(world, EgFatal);
-
-	ecs_set_component_actions(world, EgPath, {
-	.ctor = ecs_default_ctor,
-	.move = ecs_move(EgPath),
-	.copy = ecs_copy(EgPath),
-	.dtor = ecs_dtor(EgPath)
-	});
-	ecs_set_component_actions(world, EgMsg, {
-	.ctor = ecs_default_ctor,
-	.move = ecs_move(EgMsg),
-	.copy = ecs_copy(EgMsg),
-	.dtor = ecs_dtor(EgMsg)
-	});
-	/*
-	*/
 
 
 
-	//ECS_SYSTEM(world, EgPrint, EcsOnUpdate, EgMsg, EgLine, EgPath, EgLevel);
-	//ECS_SYSTEM(world, EgPrint_Info1, EcsOnUpdate, EgLine);
+	ck_ring_init(ring + Q_FREE, QN);
+	ck_ring_init(ring + Q_STDIN, QN);
+	ck_ring_init(ring + Q_STDERR, QN);
+	buffer[Q_FREE] = ecs_os_calloc(sizeof(ck_ring_buffer_t) * QN);
+	buffer[Q_STDIN] = ecs_os_calloc(sizeof(ck_ring_buffer_t) * QN);
+	buffer[Q_STDERR] = ecs_os_calloc(sizeof(ck_ring_buffer_t) * QN);
+	g_msg = ecs_os_calloc(sizeof(char) * CAP * QN);
 
-	ecs_os_api.log_ = eg_log_msg;
+	for(intptr_t i = 0; i < QN; ++i)
+	{
+		ck_ring_enqueue_mpmc(ring + Q_FREE, buffer[Q_FREE], (void*)i);
+	}
 
-	//ecs_os_thread_t t = ecs_os_thread_new(the_thread1, NULL);
+
+	ecs_os_api.log_ = eg_log_msg1;
+	ecs_os_thread_t t = ecs_os_thread_new(thread1, NULL);
+
+
 }
 
 

@@ -10,6 +10,8 @@ QMAKE_CFLAGS += -Wno-unused-parameter
 QMAKE_CFLAGS += -Wno-missing-braces
 QMAKE_CFLAGS += -Wno-missing-field-initializers
 
+INCLUDEPATH += ck/include
+
 SOURCES += main.c
 SOURCES += flecs.c
 SOURCES += eg_socket_mingw32.c
@@ -18,6 +20,7 @@ SOURCES += eg_basic.c
 SOURCES += eg_net.c
 SOURCES += eg_log.c
 SOURCES += eg_thread.c
+SOURCES += eg_cklog.c
 
 HEADERS += eg_socket.h
 HEADERS += eg_geometry.h
@@ -25,6 +28,7 @@ HEADERS += eg_basic.h
 HEADERS += eg_net.h
 HEADERS += eg_log.h
 HEADERS += eg_thread.h
+HEADERS += eg_cklog.h
 
 
 LIBS += -lmingw32 -lws2_32

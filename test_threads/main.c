@@ -8,11 +8,10 @@ struct eg_cklog g_logctx;
 
 void *printme(void *msg)
 {
-	while (1)
-	{
-		usleep(1000000);
-		eg_cklog_consume(&g_logctx);
-	}
+	eg_cklog_consume(&g_logctx);
+	eg_cklog_consume(&g_logctx);
+	eg_cklog_consume(&g_logctx);
+	eg_cklog_consume(&g_logctx);
 }
 
 int main(int argc, char * argv[])

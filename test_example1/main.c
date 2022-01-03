@@ -5,14 +5,17 @@
 #include <unistd.h>
 #include <flecs.h>
 
+
 #include "eg_basic.h"
 #include "eg_socket.h"
 #include "eg_geometry.h"
-//#include "eg_net.h"
 #include "eg_log.h"
 #include "eg_thread.h"
 
 
+
+
+//https://www.flecs.dev/explorer/?remote=true
 
 void main_init()
 {
@@ -37,9 +40,9 @@ int main(int argc, char *argv[])
 	});
 
 
-	ECS_IMPORT(world, FlecsComponentsBasic);
-	ECS_IMPORT(world, FlecsComponentsEgThread);
-	//ECS_IMPORT(world, FlecsComponentsEgLog);
+	ECS_IMPORT(world, FlecsComponentsEgLog);
+	//ECS_IMPORT(world, FlecsComponentsBasic);
+	//ECS_IMPORT(world, FlecsComponentsEgThread);
 	//ECS_IMPORT(world, FlecsComponentsBasic);
 	//ECS_IMPORT(world, FlecsComponentsSocket);
 	//ECS_IMPORT(world, FlecsComponentsGeometry);
@@ -78,7 +81,11 @@ int main(int argc, char *argv[])
 	});
 	*/
 
-	//ecs_trace("Testing %p", world);
+	ecs_trace("Testing %p", world);
+	ecs_trace("Testing %p", world);
+	ecs_trace("Testing %p", world);
+	ecs_trace("Testing %p", world);
+	ecs_trace("Testing %p", world);
 	ecs_set(world, EcsWorld, EcsRest, {0});
 	while (1)
 	{
