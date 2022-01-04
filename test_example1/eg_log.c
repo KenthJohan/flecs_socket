@@ -1,8 +1,8 @@
 #include "eg_log.h"
+#include "eg_mempool.h"
 
 #include <ck_ring.h>
 #include <ck_backoff.h>
-
 
 
 
@@ -32,28 +32,23 @@ static char const * get_text(int level)
 
 enum channel
 {
-	CHANNEL_FREE,
 	CHANNEL_STDOUT,
 	CHANNEL_STDERR,
 	CHANNEL_COUNT
 };
-#define QUEUE_CAPACITY 64
-#define LOGMSG_CAPACITY 1024
+#define EG_LOG_RING_CAPACITY 64
 static ck_ring_t g_ring[CHANNEL_COUNT];
 static ck_ring_buffer_t * g_rbuffer[CHANNEL_COUNT];
-static char * g_msg;
+static struct eg_mempool pool;
 
 
-static void enqueue_blocking(enum channel q, intptr_t index)
+
+static void enqueue_blocking(enum channel q, char* msg)
 {
 	ck_backoff_t backoff = CK_BACKOFF_INITIALIZER;
 	bool rv;
 enqueue:
-	rv = ck_ring_enqueue_mpmc(g_ring+q, g_rbuffer[q], (void*)index);
-	if (CK_CC_UNLIKELY(q == CHANNEL_FREE && rv == false))
-	{
-		fprintf(stderr, "Failure to enqueue the free channel should never happen.");
-	}
+	rv = ck_ring_enqueue_mpmc(g_ring+q, g_rbuffer[q], (void*)msg);
 	if (CK_CC_UNLIKELY(rv == false))
 	{
 		ck_pr_stall();
@@ -64,13 +59,13 @@ enqueue:
 }
 
 
-static intptr_t dequeue_blocking(enum channel q)
+static char * dequeue_blocking(enum channel q)
 {
-	intptr_t index;
+	char * msg;
 	ck_backoff_t backoff = CK_BACKOFF_INITIALIZER;
 	bool rv;
 enqueue:
-	rv = ck_ring_dequeue_mpmc(g_ring+q, g_rbuffer[q], (void*)&index);
+	rv = ck_ring_dequeue_mpmc(g_ring+q, g_rbuffer[q], (void*)&msg);
 	if(rv == false)
 	{
 		ck_pr_stall();
@@ -78,7 +73,7 @@ enqueue:
 		ck_backoff_eb(&backoff);
 		goto enqueue;
 	}
-	return index;
+	return msg;
 }
 
 
@@ -90,14 +85,8 @@ static void eg_log_msg1(int32_t level, const char *file, int32_t line, const cha
 {
 	char const * color = get_color(level);
 	char const * text = get_text(level);
-	char * buf;
-	intptr_t index = INTPTR_MAX;
-
-	{
-		index = dequeue_blocking(CHANNEL_FREE);
-		buf = g_msg + LOGMSG_CAPACITY * index;
-	}
-
+	int len = strlen(msg);
+	char * buf = eg_mempool_get(&pool, len);
 	char indent[32] = {'\0'};
 	if (level >= 0)
 	{
@@ -116,16 +105,15 @@ static void eg_log_msg1(int32_t level, const char *file, int32_t line, const cha
 	enum channel q;
 	if (level < 0)
 	{
-		snprintf(buf, LOGMSG_CAPACITY, "%s%s"ECS_NORMAL": %s%s:%d: %s", color, text, indent, file, line, msg);
+		sprintf(buf, "%s%s"ECS_NORMAL": %s%s:%d: %s", color, text, indent, file, line, msg);
 		q = CHANNEL_STDERR;
 	}
 	else
 	{
-		snprintf(buf, LOGMSG_CAPACITY, "%s%s"ECS_NORMAL":%s %s", color, text, indent, msg);
+		sprintf(buf, "%s%s"ECS_NORMAL":%s %s", color, text, indent, msg);
 		q = CHANNEL_STDOUT;
 	}
-
-	enqueue_blocking(q, index);
+	enqueue_blocking(q, buf);
 }
 
 
@@ -137,19 +125,18 @@ static void eg_log_msg1(int32_t level, const char *file, int32_t line, const cha
 
 static bool consume_print(enum channel q)
 {
-	intptr_t index;
+	char * buf;
 	bool rv;
-	rv = ck_ring_dequeue_mpmc(g_ring+q, g_rbuffer[q], (void*)&index);
+	rv = ck_ring_dequeue_mpmc(g_ring+q, g_rbuffer[q], (void*)&buf);
 	if (rv == true)
 	{
-		char * buf = g_msg + LOGMSG_CAPACITY * index;
 		printf("Q%i: %s\n", q, buf);
-		enqueue_blocking(CHANNEL_FREE, index);
+		eg_mempool_reclaim_ex(&pool, (uint8_t*)buf);
 	}
 	return rv;
 }
 
-
+int stall = 0;
 static void * thread1(void *arg)
 {
 	ck_backoff_t backoff = CK_BACKOFF_INITIALIZER;
@@ -163,6 +150,7 @@ static void * thread1(void *arg)
 		}
 		else
 		{
+			stall++;
 			ck_pr_stall();
 			ecs_os_sleep(0, backoff);
 			ck_backoff_eb(&backoff);
@@ -170,24 +158,37 @@ static void * thread1(void *arg)
 	}
 }
 
+static void * thread2(void *arg)
+{
+	int i = 0;
+	while(1)
+	{
+		ecs_os_sleep(1,0);
+		ecs_trace("Testing %i %i", i++, stall);
+	}
+}
+
+
 void FlecsComponentsEgLogImport(ecs_world_t *world)
 {
 	ECS_MODULE(world, FlecsComponentsEgLog);
 	ecs_set_name_prefix(world, "Eg");
 	for (int i = 0; i < CHANNEL_COUNT; ++i)
 	{
-		ck_ring_init(g_ring + i, QUEUE_CAPACITY);
-		g_rbuffer[i] = ecs_os_calloc(sizeof(ck_ring_buffer_t) * QUEUE_CAPACITY);
+		ck_ring_init(g_ring + i, EG_LOG_RING_CAPACITY);
+		g_rbuffer[i] = ecs_os_calloc(sizeof(ck_ring_buffer_t) * EG_LOG_RING_CAPACITY);
 	}
-	g_msg = ecs_os_calloc(sizeof(char) * LOGMSG_CAPACITY * QUEUE_CAPACITY);
+	eg_mempool_init(&pool);
 
-	for(intptr_t i = 0; i < QUEUE_CAPACITY; ++i)
-	{
-		int q = CHANNEL_FREE;
-		ck_ring_enqueue_mpmc(g_ring + q, g_rbuffer[q], (void*)i);
-	}
 	ecs_os_api.log_ = eg_log_msg1;
-	ecs_os_thread_t t = ecs_os_thread_new(thread1, NULL);
+	ecs_os_thread_t t1 = ecs_os_thread_new(thread1, NULL);
+	ecs_os_thread_t t2 = ecs_os_thread_new(thread2, NULL);
+
+
+	//printf("%i %i\n", 17, LOG2(17));
+	//printf("%i %i\n", 1024, LOG2(4096));
+
+	//test_eg_mempool();
 }
 
 
